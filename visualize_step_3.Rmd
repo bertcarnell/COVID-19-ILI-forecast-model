@@ -37,18 +37,33 @@ regionflu$ili_per_provider <- regionflu$ilitotal / regionflu$num_of_providers
 
 ```{r national, echo=FALSE}
 ggplot(usflu, aes(x = week_start, y = total_patients)) + 
-  geom_line()
+  geom_line() +
+  labs(x = "", y = "Total Patients (US)") +
+  theme_bw() +
+  scale_y_continuous(labels = scales::comma)
 ggplot(usflu, aes(x = week_start, y = num_of_providers)) + 
-  geom_line()
+  geom_line() +
+  labs(x = "", y = "Number of Providers (US)") +
+  theme_bw() +
+  scale_y_continuous(labels = scales::comma)
 ggplot(usflu, aes(x = week_start, y = ilitotal)) + 
-  geom_line()
+  geom_line() +
+  labs(x = "", y = "Total ILI (US) (%)") +
+  theme_bw() +
+  scale_y_continuous(labels = scales::comma)
 ggplot(usflu, aes(x = week_start, y = ili_per_provider)) + 
-  geom_line()
+  geom_line() +
+  labs(x = "", y = "ILI Per Provider (US) (%)") +
+  theme_bw()
 ggplot(usflu, aes(x = week, y = weighted_ili, col = fyear, group = fyear)) + 
-  geom_line()
+  geom_line() +
+  labs(x = "Week", y = "Weighted ILI (US)", col = "Year") +
+  theme_bw()
 ggplot(subset(usflu, year > 2015), 
        aes(x = week, y = weighted_ili, col = fyear, group = fyear)) + 
-  geom_line()
+  geom_line() +
+  labs(x = "Week", y = "Weighted ILI (US)", col = "Year") +
+  theme_bw()
 ```
 
 ## Regional
@@ -57,12 +72,16 @@ ggplot(subset(usflu, year > 2015),
 ggplot(regionflu, aes(x = week_start, y = weighted_ili)) +
   geom_line() +
   facet_grid(region ~ .) +
-  theme(strip.text.y = element_text(angle = 0))
+  theme_bw() +
+  theme(strip.text.y = element_text(angle = 0)) +
+  labs(x = "", y = "Weighted ILI")
 
 ggplot(subset(regionflu, year > 2015), aes(x = week_start, y = weighted_ili)) +
   geom_line() +
   facet_grid(region ~ .) +
-  theme(strip.text.y = element_text(angle = 0))
+  theme_bw() +
+  theme(strip.text.y = element_text(angle = 0)) +
+  labs(x = "", y = "Weighted ILI")
 ```
 
 ## US COVID
@@ -87,26 +106,59 @@ plot_data2 <- reshape2::melt(plot_data, id.vars = "date",
 
 ggplot(plot_data2, aes(x = date, y = count, col = type, group = type)) + 
   geom_line() +
-  scale_y_continuous(label = scales::comma_format(accuracy = 1))
+  scale_y_continuous(label = scales::comma_format(accuracy = 1)) +
+  labs(x = "", y = "Count of COVID-19 Cases", col = "Type") +
+  theme_bw()
 
-ggplot(plot_data2, aes(x = date, y = count, col = type, group = type)) + 
+ggplot(subset(plot_data2, count > 0), 
+       aes(x = date, y = count, col = type, group = type)) + 
   geom_line() +
-  scale_y_log10(label = scales::comma_format(accuracy = 1))
+  scale_y_log10(label = scales::comma_format(accuracy = 1)) +
+  labs(x = "", y = "Count of COVID-19 Cases (log10 scale)", col = "Type") +
+  theme_bw()
 ```
 
 ## State COVID
 
 ```{r state, echo=FALSE}
+covid_daily$Active <- with(covid_daily, Confirmed - Deaths - Recovered)
 plot_data <- covid_daily %>% 
   subset(Country_Region == "US" & Province_State %in% hhs_regions_map$state) %>%
   dplyr::group_by(date, Province_State) %>%
-  dplyr::summarize(Confirmed = sum(Confirmed))
+  dplyr::summarize(Confirmed = sum(Confirmed),
+                   Deaths = sum(Deaths),
+                   Recovered = sum(Recovered),
+                   Active = sum(Active))
 
 plot_data$region_num <- hhs_regions_map$region_num[
   match(plot_data$Province_State, hhs_regions_map$state)]
+plot_data$region <- hhs_regions_map$region[
+  match(plot_data$Province_State, hhs_regions_map$state)]
 
-ggplot(plot_data, aes(x = date, y = Confirmed, group = Province_State)) +
+ggplot(subset(plot_data, Confirmed > 0),
+       aes(x = date, y = Confirmed, group = Province_State)) +
   geom_line() +
-  facet_grid(region_num~.) +
-  scale_y_log10(label = scales::comma_format(accuracy = 1))
+  facet_grid(region ~ .) +
+  scale_y_log10(label = scales::comma_format(accuracy = 1)) +
+  theme_bw() +
+  theme(strip.text.y = element_text(angle = 0)) +
+  labs(x = "", y = "Confirmed (log scale)")
+
+ggplot(subset(plot_data, Deaths > 0), 
+       aes(x = date, y = Deaths, group = Province_State)) +
+  geom_line() +
+  facet_grid(region ~ .) +
+  scale_y_log10(label = scales::comma_format(accuracy = 1)) +
+  theme_bw() +
+  theme(strip.text.y = element_text(angle = 0)) +
+  labs(x = "", y = "Deaths (log scale)")
+
+ggplot(subset(plot_data, Active > 0), 
+       aes(x = date, y = Active, group = Province_State)) +
+  geom_line() +
+  facet_grid(region ~ .) +
+  scale_y_log10(label = scales::comma_format(accuracy = 1)) +
+  theme_bw() +
+  theme(strip.text.y = element_text(angle = 0)) +
+  labs(x = "", y = "Active (log scale)")
 ```

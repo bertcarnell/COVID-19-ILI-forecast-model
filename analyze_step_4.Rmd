@@ -30,9 +30,11 @@ covid_input_file <- paste0("COVID19_data_", today_date, ".RData")
 
 load(ili_input_file)
 load(covid_input_file)
+
+source("utility_functions.R")
 ```
 
-## Combine Datasets
+## Combine ILInet and COVID-19 Datasets
 
 ```{r combine, echo=FALSE}
 temp_covid <- covid_daily %>% 
@@ -42,23 +44,21 @@ temp_covid <- covid_daily %>%
   # take the max confirmed across the week
   summarise(confirmed = max(Confirmed, na.rm = TRUE))
 
-#subset(temp_covid, Province_State == "California")
-#subset(temp_covid, Province_State == "Connecticut")
-
 stateflu3 <- merge(stateflu, temp_covid, by.x = c("region", "year", "week"),
                    by.y = c("Province_State", "mmwryear", "mmwrweek"),
                    all.x = TRUE, all.y = FALSE)
 
-#subset(stateflu3, region == "Connecticut" & year == 2020)
+subset(stateflu3, region == "Connecticut" & year == 2020,
+       select = c("week_start", "week", "region", "unweighted_ili", "ilitotal", 
+                  "num_of_providers", "total_patients", 
+                  "confirmed"))
 ```
 
 ## Connecticut ARIMA example
 
-```{r arima, echo=FALSE}
-################################################################################
-# ARIMA forecast - state 
+#### Build the transformed time series
 
-# fit the ARIMA to the data before 1/22/2020 for one state
+```{r arima, echo=FALSE}
 model_state <- hhs_regions_map$state[1]
 
 # find the first mmwrweek where confirmed is > 0
@@ -72,7 +72,8 @@ if (length(split_ind) == 0)
 
 model_data_pre <- model_data[1:(split_ind - 1),]
 model_data_post <- model_data[split_ind:nrow(model_data),]
-model_data_pre$patient_per_provider <- model_data_pre$total_patients / model_data_pre$num_of_providers
+model_data_pre$patient_per_provider <- model_data_pre$total_patients / 
+  model_data_pre$num_of_providers
 
 # data is on [0,100] on a percent scale
 #  translate to [0,1] with a logistic
@@ -86,22 +87,46 @@ model_data_pre$unweighted_ili_modeling <- qlogis(model_data_pre$unweighted_ili_m
 
 ts_model_data <- ts(model_data_pre$unweighted_ili_modeling, 
                     start = c(2010, 40), frequency = 52)
-```
 
-#### Timeseries graphs
-
-```{r ts_graphs, echo=FALSE}
 ggplot(model_data_pre, aes(x = week_start, y = num_of_providers)) + 
-  geom_line()
+  geom_line() +
+  theme_bw() +
+  labs(x = "Connecticut", y = "Number of Providers")
+
 ggplot(model_data_pre, aes(x = week_start, y = patient_per_provider)) + 
-  geom_line()
+  geom_line() +
+  theme_bw() +
+  labs(x = "Connecticut", y = "Patients per Provider")
+
 ggplot(model_data_pre, aes(x = week_start, y = unweighted_ili)) + 
-  geom_line()
-ts_model_decomp <- decompose(ts_model_data)
-plot(ts_model_decomp)
+  geom_line() +
+  theme_bw() +
+  labs(x = "Connecticut", y = "Unweighted ILI (percent)")
+
+plot(ts_model_data, xlab = "Connecticut", 
+     ylab = "Logit transformed unweighted ILI")
+
+ts_model_decomp <- stats::decompose(ts_model_data, type = "additive")
+
+# plot(ts_model_decomp)
+
+ts_model_decomp_df <- data.frame(
+  time = as.numeric(time(ts_model_data)),
+  actual = as.numeric(ts_model_decomp$x),
+  seasonal = as.numeric(ts_model_decomp$seasonal),
+  trend = as.numeric(ts_model_decomp$trend),
+  random = as.numeric(ts_model_decomp$random)
+) %>% melt(id.vars = "time")
+
+ggplot(subset(ts_model_decomp_df, !is.na(value)),
+       aes(x = time, y = value, group = variable)) +
+  geom_line() +
+  facet_grid(variable ~ .) +
+  labs(y = "Logit transformed Unweighted ILI", x = "") +
+  theme_bw()
 ```
 
-#### Stationary Model
+#### Explore the Stationary Model
 
 ```{r ts_manual, echo=FALSE}
 # fit the trend
@@ -112,10 +137,16 @@ ts_model_adj <- ts_model_data - ts_model_decomp$seasonal -
 # take differences
 ts_model_adj <- diff(ts_model_adj, differences = 1)
 # check stationarity
-plot(ts_model_adj)
+plot_data <- data.frame(time = as.numeric(time(ts_model_adj)),
+                        ili = as.numeric(ts_model_adj))
+ggplot(plot_data, aes(x = time, y = ili)) +
+  geom_line() +
+  theme_bw() +
+  labs(x = "", y = "Seasonally Adjusted, De-trended\nDifferenced Time Series")
+
 # check autocorrelation
-acf(ts_model_adj, lag.max = 25)
-pacf(ts_model_adj, lag.max = 25)
+acf(ts_model_adj, lag.max = 25, main = "")
+pacf(ts_model_adj, lag.max = 25, main = "")
 ```
 
 #### Auto-ARIMA
@@ -125,66 +156,46 @@ pacf(ts_model_adj, lag.max = 25)
 arima2 <- forecast::auto.arima(ts_model_data, max.p = 3, max.q = 2, max.P = 2,
                                max.Q = 2, max.d = 2, max.D = 1,
                                start.p = 1, start.q = 1, start.P = 1, start.Q = 1)
-arima2
+summary(arima2)
 
 # forecast 6 weeks ahead of today plus predict weeks since first confirmed case
 arima2_fcst <- forecast::forecast(arima2, h = nrow(model_data_post) + 6, 
                                   level = c(0.90))
+
 fcst_weeks <- c(model_data_post$week, max(model_data_post$week) + 1:6)
 
-get_se_from_arima <- function(obj)
-{
-  assertthat::assert_that("forecast" %in% class(obj))
-  # in the forecast:::forecast.Arima function the lower and upper are created by
-  #   qq <- qnorm(0.5 * (1 + level[i]/100))
-  #   lower[, i] <- pred$pred - qq * pred$se
-  #   upper[, i] <- pred$pred + qq * pred$se
-  as.numeric((obj$upper[,1] - obj$lower[,1]) / 2 / qnorm(0.5 * (1 + obj$level[1] / 100)))
-}
-
-# get_se_from_arima(arima2_fcst)
-
-create_result_from_arima_fcst <- function(obj)
-{
-  #obj <- arima2_fcst
-  assertthat::assert_that("forecast" %in% class(obj))
-  # point estimate on the logit scale
-  point_est_logit_scale <- as.numeric(obj$mean)
-  # point estimate on the percent scale
-  point_est <- plogis(point_est_logit_scale) * 100
-  # standard errors on the logit scale
-  se_est_logit_scale <- get_se_from_arima(obj)
-  assertthat::assert_that(length(point_est_logit_scale) == length(se_est_logit_scale))
-  # bins on the percent scale
-  bins <- c(seq(0.0, 25, by = 0.1), 100)
-  bin_res <- matrix(NA, nrow = length(bins) - 1, ncol = length(obj$mean))
-  for (j in 1:length(obj$mean))
-  {
-    for (i in 1:(length(bins) - 1))
-    {
-      bin_res[i, j] <- pnorm(qlogis(bins[i + 1] / 100), 
-                             point_est_logit_scale[j], 
-                             se_est_logit_scale[j]) -
-        pnorm(qlogis(bins[i] / 100), 
-              point_est_logit_scale[j], 
-              se_est_logit_scale[j])
-    }
-  }
-  return(list(point = point_est,
-              bins = bins,
-              p_bin = bin_res))
-}
-
 arima2_fcst_result <- create_result_from_arima_fcst(arima2_fcst)
+```
 
-# should sum to 1
-apply(arima2_fcst_result$p_bin, 2, sum)
+#### ARIMA Forecast and 90% Confidence Without COVID-19
+
+```{r }
+plot_data <- data.frame(time = as.numeric(time(ts_model_data)),
+                        actuals = as.numeric(ts_model_data),
+                        fitted = as.numeric(arima2$fitted))
+plot_data_pred <- data.frame(time = as.numeric(time(arima2_fcst$mean)),
+                             pred = as.numeric(arima2_fcst$mean),
+                             upper = as.numeric(arima2_fcst$upper),
+                             lower = as.numeric(arima2_fcst$lower))
+
+ggplot() + 
+  geom_line(aes(x = time, y = actuals), data = plot_data) +
+  geom_line(aes(x = time, y = pred), data = plot_data_pred) +
+  geom_ribbon(aes(x = time, ymin = lower, ymax = upper), 
+              data = plot_data_pred, alpha = 0.25) +
+  coord_cartesian(xlim = c(2017.0, 2020.5), ylim = c(-9, -1))
+
 # should find expected value is not equal to the mean from the logit transform
 bin_centers <- (arima2_fcst_result$bins[1:(length(arima2_fcst_result$bins) - 1)] +
                   arima2_fcst_result$bins[2:length(arima2_fcst_result$bins)]) / 2
-matrix(bin_centers, nrow = 1, byrow = TRUE) %*% arima2_fcst_result$p_bin
-arima2_fcst_result$point
 ```
+
+Check that the bin probabilities sum to 1: `r apply(arima2_fcst_result$p_bin, 2, sum)`
+
+Check that the expected value of the bins is close to the point estimates:
+- Expected value: `r c(matrix(bin_centers, nrow = 1, byrow = TRUE) %*% arima2_fcst_result$p_bin)`
+- Point Est:  `r arima2_fcst_result$point`
+
 
 #### Predict
 
@@ -284,43 +295,6 @@ covid_daily_state_pred <- covid_daily_state_pred_data %>%
 #### Add COVID prediction to ILI prediction
 
 ```{r res, echo=FALSE}
-create_result_from_arima_fcst_plus <- function(obj, add_ili, mmwrweeks)
-{
-  #obj <- arima2_fcst
-  #add_ili <- c(covid_daily_state_post$pred_ili, covid_daily_state_pred$pred_ili)
-  #mmwrweeks <- c(covid_daily_state_post$mmwrweek, covid_daily_state_pred$mmwrweek)
-  assertthat::assert_that("forecast" %in% class(obj))
-  
-  # point estimate on the logit scale
-  point_est_logit_scale <- as.numeric(obj$mean)
-  # point estimate on the percent scale
-  point_est <- plogis(point_est_logit_scale) * 100
-  point_est_new <- point_est + add_ili
-  point_est_logit_scale_new <- qlogis(point_est_new / 100)
-  # standard errors on the logit scale
-  se_est_logit_scale <- get_se_from_arima(obj)
-  assertthat::assert_that(length(point_est_logit_scale) == length(se_est_logit_scale))
-  # bins on the percent scale
-  bins <- c(seq(0.0, 25, by = 0.1), 100)
-  bin_res <- matrix(NA, nrow = length(bins) - 1, ncol = length(obj$mean))
-  for (j in 1:length(obj$mean))
-  {
-    for (i in 1:(length(bins) - 1))
-    {
-      bin_res[i, j] <- pnorm(qlogis(bins[i + 1] / 100), 
-                             point_est_logit_scale_new[j], 
-                             se_est_logit_scale[j]) -
-        pnorm(qlogis(bins[i] / 100), 
-              point_est_logit_scale_new[j], 
-              se_est_logit_scale[j])
-    }
-  }
-  return(list(point = point_est_new,
-              bins = bins,
-              p_bin = bin_res,
-              mmwrweeks = mmwrweeks))
-}
-
 arima2_fcst_result_plus <- create_result_from_arima_fcst_plus(
   arima2_fcst, 
   c(covid_daily_state_post$pred_ili, covid_daily_state_pred$pred_ili), 
