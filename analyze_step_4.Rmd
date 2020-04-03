@@ -19,6 +19,7 @@ require(readr)
 require(MMWRweek)
 require(forecast)
 require(assertthat)
+require(rehsape2)
 
 ################################################################################
 # filenames
@@ -116,7 +117,7 @@ ts_model_decomp_df <- data.frame(
   seasonal = as.numeric(ts_model_decomp$seasonal),
   trend = as.numeric(ts_model_decomp$trend),
   random = as.numeric(ts_model_decomp$random)
-) %>% melt(id.vars = "time")
+) %>% reshape2::melt(id.vars = "time")
 
 ggplot(subset(ts_model_decomp_df, !is.na(value)),
        aes(x = time, y = value, group = variable)) +
@@ -169,7 +170,7 @@ arima2_fcst_result <- create_result_from_arima_fcst(arima2_fcst)
 
 #### ARIMA Forecast and 90% Confidence Without COVID-19
 
-```{r }
+```{r arima_graph, echo=FALSE}
 plot_data <- data.frame(time = as.numeric(time(ts_model_data)),
                         actuals = as.numeric(ts_model_data),
                         fitted = as.numeric(arima2$fitted))
@@ -190,12 +191,12 @@ bin_centers <- (arima2_fcst_result$bins[1:(length(arima2_fcst_result$bins) - 1)]
                   arima2_fcst_result$bins[2:length(arima2_fcst_result$bins)]) / 2
 ```
 
-Check that the bin probabilities sum to 1: `r apply(arima2_fcst_result$p_bin, 2, sum)`
+Check that the bin probabilities sum to 1: `r assertthat::assert_that(all(abs(apply(arima2_fcst_result$p_bin, 2, sum) - 1) < 1E-6))`
 
 Check that the expected value of the bins is close to the point estimates:
-- Expected value: `r c(matrix(bin_centers, nrow = 1, byrow = TRUE) %*% arima2_fcst_result$p_bin)`
-- Point Est:  `r arima2_fcst_result$point`
 
+- Expected value: `r round(c(matrix(bin_centers, nrow = 1, byrow = TRUE) %*% arima2_fcst_result$p_bin), digits = 2)`
+- Point Est:  `r round(arima2_fcst_result$point, digits = 2)`
 
 #### Predict
 
@@ -299,6 +300,41 @@ arima2_fcst_result_plus <- create_result_from_arima_fcst_plus(
   arima2_fcst, 
   c(covid_daily_state_post$pred_ili, covid_daily_state_pred$pred_ili), 
   c(covid_daily_state_post$mmwrweek, covid_daily_state_pred$mmwrweek))
+
+plot_data <- data.frame(time = as.numeric(time(ts_model_data)),
+                        actuals = as.numeric(ts_model_data),
+                        fitted = as.numeric(arima2$fitted))
+plot_data_pred <- data.frame(time = as.numeric(time(arima2_fcst$mean)),
+                             pred = as.numeric(arima2_fcst_result_plus$point_logit_scale))
+
+ggplot() + 
+  geom_line(aes(x = time, y = actuals, col = "Actuals"), data = plot_data) +
+  geom_line(aes(x = time, y = fitted, col = "Fitted"), data = plot_data) +
+  geom_line(aes(x = time, y = pred, col = "Predicted ILI + COVID-19"), 
+            data = plot_data_pred) +
+  coord_cartesian(xlim = c(2017.0, 2020.5), ylim = c(-9, -1)) +
+  labs(x = "", y = "ILI on the Logit scale", col = "Type")
+
+k_col <- ncol(arima2_fcst_result_plus$p_bin)
+plot_data <- data.frame(
+  ili = rep(bin_centers, times = k_col),
+  prob = c(arima2_fcst_result_plus$p_bin),
+  week = rep(paste0("Week Ahead ", (6 - k_col + 1):6), each = nrow(arima2_fcst_result_plus$p_bin))
+)
+plot_data2 <- data.frame(
+  ili = arima2_fcst_result_plus$point,
+  week = paste0("Week Ahead ", (6 - k_col + 1):6)
+)
+
+ggplot(plot_data) +  
+  geom_histogram(aes(x = ili, y = ..density.., weight = prob), 
+                 breaks = arima2_fcst_result$bins, position = "identity") +
+  facet_grid(week ~ .) +
+  theme_bw() +
+  theme(strip.text.y = element_text(angle = 0)) +
+  geom_vline(aes(xintercept = ili), data = plot_data2, col = "red") +
+  labs(x = paste("Unweighted ILI in", hhs_regions_map$state[1]), y = "Density")
+
 ```
 
 #### Write Out

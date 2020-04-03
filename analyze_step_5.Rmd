@@ -49,13 +49,15 @@ temp_covid <- covid_daily %>%
   subset(Country_Region == "US" & 
            Province_State %in% hhs_regions_map$state) %>%
   group_by(Province_State, mmwryear, mmwrweek) %>%
-  summarise(confirmed = max(Confirmed, na.rm = TRUE))
+  summarise(confirmed = max(Confirmed, na.rm = TRUE),
+            active = max(Active, na.rm = TRUE))
 
 temp_covid_nyc <- covid_daily %>%
   subset(Country_Region == "US" & 
            Combined_Key == "New York City, New York, US") %>%
   group_by(Province_State, mmwryear, mmwrweek) %>%
-  summarise(confirmed = max(Confirmed, na.rm = TRUE))
+  summarise(confirmed = max(Confirmed, na.rm = TRUE),
+            active = max(Active, na.rm = TRUE))
 
 stateflu3 <- merge(stateflu, temp_covid, by.x = c("region", "year", "week"),
                    by.y = c("Province_State", "mmwryear", "mmwrweek"),
@@ -65,15 +67,22 @@ temp_nyc <- merge(subset(stateflu, region == "New York City" & year == 2020),
       by.y = c("mmwryear", "mmwrweek"),
       all.x = FALSE, all.y = FALSE)
 
-stateflu3 <- within(stateflu3, confirmed[which(region == "New York City" & year == 2020 & week %in% temp_covid_nyc$mmwrweek)] <-
-                      temp_nyc$confirmed)
+stateflu3 <- within(stateflu3, 
+                    confirmed[which(region == "New York City" & 
+                                    year == 2020 & 
+                                    week %in% temp_covid_nyc$mmwrweek)] <- temp_nyc$confirmed)
+stateflu3 <- within(stateflu3, 
+                    active[which(region == "New York City" & 
+                                   year == 2020 & 
+                                   week %in% temp_covid_nyc$mmwrweek)] <- temp_nyc$active)
 ```
 
 ## ARIMA for each state
 
-```{r arima, echo=FALSE}
+#### Build an auto.arima model for each state
 
-state_arima_build <- function(model_state, model_data)
+```{r arima, echo=FALSE}
+state_auto_arima_build <- function(model_state, model_data)
 {
   # model_state <- hhs_regions_map$state[51]
   # model_data <- subset(stateflu3, stateflu3$region == model_state)
@@ -109,17 +118,81 @@ state_arima_build <- function(model_state, model_data)
   ts_model_data <- ts(model_data_pre$unweighted_ili_modeling, 
                       start = c(2010, 40), frequency = 52)
   
-  # arima2 <- forecast::auto.arima(ts_model_data, max.p = 3, max.q = 2, max.P = 2,
-  #                              max.Q = 2, max.d = 2, max.D = 1,
-  #                              start.p = 1, start.q = 1, start.P = 1, start.Q = 1)
-  arima2 <- forecast::Arima(ts_model_data, order = c(1, 0, 1),
-                            seasonal = c(1, 1, 0), include.drift = TRUE)  
+  arima2 <- forecast::auto.arima(ts_model_data, max.p = 3, max.q = 2, max.P = 2,
+                              max.Q = 2, max.d = 2, max.D = 1,
+                              start.p = 1, start.q = 1, start.P = 1, start.Q = 1)
+  # Auto arima is producting some negative coefficient varinaces
+  suppressWarnings({
+  if (any(is.na(sqrt(diag(vcov(arima_model_list[[i]]$arima_model))))))
+  {
+    arima2 <- forecast::Arima(ts_model_data, order = c(1, 0, 1),
+                             seasonal = c(1, 1, 0), include.drift = TRUE)
+  }
+  })
+  return(list(arima_model = arima2,
+              ts_model_data = ts_model_data,
+              model_data_pre = model_data_pre,
+              model_data_post = model_data_post))
+}
 
+if (FALSE)
+{
+  arima_model_list <- vector("list", length(hhs_regions_map$state))
+  for (i in seq_along(hhs_regions_map$state))
+  {
+    print(paste0(i, ": ", as.character(hhs_regions_map$state[i])))
+    if (as.character(hhs_regions_map$state[i]) %in% 
+        c("Commonwealth of the Northern Mariana Islands")) 
+      next
+    model_state <- hhs_regions_map$state[i]
+    model_data <- subset(stateflu3, stateflu3$region == model_state)
+    arima_model_list[[i]] <- state_auto_arima_build(model_state, model_data)
+  }
+  for (i in seq_along(hhs_regions_map$state))
+  {
+    print(paste0(i, ": ", as.character(hhs_regions_map$state[i])))
+    if (as.character(hhs_regions_map$state[i]) %in% 
+        c("Commonwealth of the Northern Mariana Islands")) 
+      next
+    if (any(is.na(sqrt(diag(vcov(arima_model_list[[i]]$arima_model))))))
+    {
+      stop("NA in coefficient standard errors")
+    }
+  }
+       
+  save(arima_model_list, file = "ILI_state_auto_arima.RData")  
+} else
+{
+  load( "ILI_state_auto_arima.RData")
+}
+
+
+state_arima_build <- function(model_state, model_data, 
+                              saved_arima_object_list)
+{
+  # saved_arima_object_list <- arima_model_list[[1]]
+  arima2 <- saved_arima_object_list$arima_model
+  model_data_pre <- saved_arima_object_list$model_data_pre
+  
+  # create model_data_post again for new data
+  all_confirmed_ind <- which(model_data$confirmed > 0 & model_data$year == 2020)
+  if (length(all_confirmed_ind) == 0)
+  {
+    split_ind <- nrow(model_data)
+    model_data_post <- model_data[nrow(model_data),]
+  } else {
+    split_ind <- min(which(model_data$confirmed > 0 & model_data$year == 2020))
+    assertthat::assert_that(length(split_ind) == 1, 
+                            msg = paste0("Error in state splitting 2", model_state))
+    model_data_post <- model_data[split_ind:nrow(model_data),]
+  }
+  
   # forecast 6 weeks ahead of today plus predict weeks since first confirmed case
   arima2_fcst <- forecast::forecast(arima2, h = nrow(model_data_post) + WEEKS_AHEAD, 
                                     level = c(0.90))
   fcst_weeks <- c(model_data_post$week, max(model_data_post$week) + 1:WEEKS_AHEAD)
   arima2_fcst_result <- create_result_from_arima_fcst(arima2_fcst)
+  
   assertthat::assert_that(all(abs(apply(arima2_fcst_result$p_bin, 2, sum) - 1) < 1E-6))
   
   model_data_post$pred_unw_ili <- arima2_fcst_result$point[1:nrow(model_data_post)]
@@ -151,7 +224,8 @@ for (i in seq_along(hhs_regions_map$state))
     next
   model_state <- hhs_regions_map$state[i]
   model_data <- subset(stateflu3, stateflu3$region == model_state)
-  arima_result_list[[i]] <- state_arima_build(model_state, model_data)
+  arima_result_list[[i]] <- state_arima_build(model_state, model_data,
+                                              arima_model_list[[i]])
 }
 
 
@@ -162,6 +236,8 @@ for (i in seq_along(hhs_regions_map$state))
 ```{r predict, echo=FALSE}
 covid_prediction_builder <- function(model_state, mean_inflation)
 {
+  #model_state <- hhs_regions_map$state[2]
+  #mean_inflation <- arima_result_list[[2]]$mean_inflation
   model_state_c <- as.character(model_state)
   if (model_state_c == "New York City")
   {
@@ -190,7 +266,10 @@ covid_prediction_builder <- function(model_state, mean_inflation)
             weights = 1 / as.numeric((as.Date(today_date) - covid_daily_state$date + 1)))
   covid_pred_params <- coef(lm1)
   covid_daily_state$pred <- exp(predict(lm1))
-  covid_daily_state_pred_data$pred <- exp(predict(lm1, newdata = covid_daily_state_pred_data))
+  # suppress messages about a rank deficient fit since we are going to fix it
+  suppressWarnings({
+    covid_daily_state_pred_data$pred <- exp(predict(lm1, newdata = covid_daily_state_pred_data))
+  })
 
   if (is.na(coef(lm1)[3]) || coef(lm1)[3] >= 0)
   {
@@ -344,6 +423,10 @@ state_template <- bind_rows(
         type = factor(type, levels = c("point", "bin"))) %>%
     arrange(location, target, type)
 
+write_csv(state_template, path = paste0("2020-ew", current_ili_week, "-bertcarnell-arima_glm.csv"))
+```
+
+```{r qa, echo = FALSE}
 ## sanity checking
 temp <- state_template %>%
   filter(type == "point") %>%
@@ -362,6 +445,4 @@ temp <- state_template %>%
   group_by(location, target) %>%
   summarize(test = sum(as.numeric(value)))
 assertthat::assert_that(all(abs(temp$test - 1) < 1E-6))
-
-write_csv(state_template, path = paste0("2020-ew", current_ili_week, "-bertcarnell-arima_glm.csv"))
 ```

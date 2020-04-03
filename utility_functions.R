@@ -74,6 +74,7 @@ create_result_from_arima_fcst_plus <- function(obj, add_ili, mmwrweeks)
     }
   }
   return(list(point = point_est_new,
+              point_logit_scale = point_est_logit_scale_new,
               bins = bins,
               p_bin = bin_res,
               mmwrweeks = mmwrweeks))
