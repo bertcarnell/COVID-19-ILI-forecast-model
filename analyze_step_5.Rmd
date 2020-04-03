@@ -423,7 +423,10 @@ state_template <- bind_rows(
         type = factor(type, levels = c("point", "bin"))) %>%
     arrange(location, target, type)
 
-write_csv(state_template, path = paste0("2020-ew", current_ili_week, "-bertcarnell-arima_glm.csv"))
+write_csv(state_template, 
+          path = file.path("state-forecast-data", "bertcarnell-arima_glm",
+                           paste0("2020-ew", current_ili_week, 
+                                  "-bertcarnell-arima_glm.csv")))
 ```
 
 ```{r qa, echo = FALSE}

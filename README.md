@@ -1,7 +1,7 @@
 # COVID-19-ILI-forecast-model
 Create the model used to submit to the CDC COVID-19 ILI Forecasting Project
 
-Useful Links:
+## Useful Links:
 
 - Public
     - [Github](https://github.com/cdcepi/COVID-19-ILI-forecasting)
@@ -12,7 +12,9 @@ Useful Links:
     - [Github](https://github.com/cdcepi/COVID-19-ILI-forecasting-submissions)
     - [Google Group](https://groups.google.com/forum/#!forum/covid-19-ili-forecasting)
 
+## Model Description
 
+[Model Metadata](state-forecast-data\bertcarnell-arima_glm\metadata-bertcarnell-arima_glm.txt)
 
 
 
