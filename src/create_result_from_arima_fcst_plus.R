@@ -16,23 +16,21 @@ create_result_from_arima_fcst_plus <- function(obj, add_ili, mmwrweeks)
   se_est_logit_scale <- get_se_from_arima(obj)
   assertthat::assert_that(length(point_est_logit_scale) == length(se_est_logit_scale))
   # bins on the percent scale
-  bins <- c(seq(0.0, 25, by = 0.1), 100)
-  bin_res <- matrix(NA, nrow = length(bins) - 1, ncol = length(obj$mean))
+  bin_res <- matrix(NA, nrow = length(reporting_bins) - 1, ncol = length(obj$mean))
   for (j in 1:length(obj$mean))
   {
-    for (i in 1:(length(bins) - 1))
+    for (i in 1:(length(reporting_bins) - 1))
     {
-      bin_res[i, j] <- pnorm(qlogis(bins[i + 1] / 100), 
+      bin_res[i, j] <- pnorm(qlogis(reporting_bins[i + 1] / 100), 
                              point_est_logit_scale_new[j], 
                              se_est_logit_scale[j]) -
-        pnorm(qlogis(bins[i] / 100), 
+        pnorm(qlogis(reporting_bins[i] / 100), 
               point_est_logit_scale_new[j], 
               se_est_logit_scale[j])
     }
   }
   return(list(point = point_est_new,
               point_logit_scale = point_est_logit_scale_new,
-              bins = bins,
               p_bin = bin_res,
               mmwrweeks = mmwrweeks))
 }

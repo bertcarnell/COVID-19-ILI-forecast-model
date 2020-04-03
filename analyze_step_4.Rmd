@@ -187,15 +187,13 @@ ggplot() +
   coord_cartesian(xlim = c(2017.0, 2020.5), ylim = c(-9, -1))
 
 # should find expected value is not equal to the mean from the logit transform
-bin_centers <- (arima2_fcst_result$bins[1:(length(arima2_fcst_result$bins) - 1)] +
-                  arima2_fcst_result$bins[2:length(arima2_fcst_result$bins)]) / 2
 ```
 
 Check that the bin probabilities sum to 1: `r assertthat::assert_that(all(abs(apply(arima2_fcst_result$p_bin, 2, sum) - 1) < 1E-6))`
 
 Check that the expected value of the bins is close to the point estimates:
 
-- Expected value: `r round(c(matrix(bin_centers, nrow = 1, byrow = TRUE) %*% arima2_fcst_result$p_bin), digits = 2)`
+- Expected value: `r round(c(matrix(reporting_bin_centers, nrow = 1, byrow = TRUE) %*% arima2_fcst_result$p_bin), digits = 2)`
 - Point Est:  `r round(arima2_fcst_result$point, digits = 2)`
 
 #### Predict
@@ -317,7 +315,7 @@ ggplot() +
 
 k_col <- ncol(arima2_fcst_result_plus$p_bin)
 plot_data <- data.frame(
-  ili = rep(bin_centers, times = k_col),
+  ili = rep(reportin_bin_centers, times = k_col),
   prob = c(arima2_fcst_result_plus$p_bin),
   week = rep(paste0("Week Ahead ", (6 - k_col + 1):6), each = nrow(arima2_fcst_result_plus$p_bin))
 )
@@ -328,7 +326,7 @@ plot_data2 <- data.frame(
 
 ggplot(plot_data) +  
   geom_histogram(aes(x = ili, y = ..density.., weight = prob), 
-                 breaks = arima2_fcst_result$bins, position = "identity") +
+                 breaks = reportin_bins, position = "identity") +
   facet_grid(week ~ .) +
   theme_bw() +
   theme(strip.text.y = element_text(angle = 0)) +
@@ -340,26 +338,13 @@ ggplot(plot_data) +
 #### Write Out
 
 ```{r writeout, echo=FALSE}
-## shared parameters/data across state/national templates
-ili_targets <- c(paste(1:6, "wk ahead"), "Peak height")
-date_targets <- c("Peak week", "First week below baseline")
-binary_targets <- c("Below baseline for 3 weeks")
-ili_bins <- as.character(sprintf("%.1f", seq(0, 25, by = 0.1)))
-date_bins_df <- MMWRweek(seq.Date(as.Date("2020-03-01"), 
-                                  as.Date("2020-08-29"), by = "1 week"))
-date_bins <- paste0(date_bins_df$MMWRyear, "-ew", date_bins_df$MMWRweek)
-
-## note, this excludes Florida and includes Virgin Islands, Puerto Rico, and District of Columbia
-
-states <- read_csv("https://raw.githubusercontent.com/cdcepi/State_FluSight_Forecasts/master/2017-2018_StateILI_Submission_Template.csv") %>%
-    .$Location %>% unique() %>% append("New York City", after = 32)
 
 ## make ILI targets template
 ili_bin_template <- expand.grid(
-  location = states, target = ili_targets, type = "bin", bin = ili_bins, 
+  location = flusight_states, target = ili_targets, type = "bin", bin = ili_bins, 
   value = as.character(NA), stringsAsFactors = FALSE)
 ili_points_template <- expand.grid(
-  location = states, target = ili_targets, type = "point", 
+  location = flusight_states, target = ili_targets, type = "point", 
   value = as.character(NA), stringsAsFactors = FALSE)
 
 ind <- which(ili_points_template$location == as.character(model_state))
@@ -374,10 +359,10 @@ ili_bin_template$value[ind] <- c(arima2_fcst_result_plus$p_bin[,(len - 6 + 1):le
 
 ## make date targets template
 date_bins_template <- expand.grid(
-  location = states, target = date_targets[1], type = "bin", 
+  location = flusight_states, target = date_targets[1], type = "bin", 
   bin = date_bins, value = as.character(NA), stringsAsFactors = FALSE)
 date_points_template <- expand.grid(
-  location = states, target = date_targets[1], type = "point", 
+  location = flusight_states, target = date_targets[1], type = "point", 
   value = as.character(NA), stringsAsFactors = FALSE)
 
 ind <- which(date_points_template$location == as.character(model_state))
@@ -398,18 +383,7 @@ state_template <- bind_rows(
     date_points_template
     # binary_bins_template
 ) %>%
-    mutate(location = factor(location, levels = states),
+    mutate(location = factor(location, levels = flusight_states),
         type = factor(type, levels = c("point", "bin"))) %>%
     arrange(location, target, type)
-
-## sanity checking
-# state_template %>% 
-#   group_by(target, type) %>% 
-#   summarize(n()) %>% 
-#   print(n = Inf)
-# state_template %>% 
-#   filter(type == "bin") %>% 
-#   group_by(location, target) %>% 
-#   summarize(sum(as.numeric(value))) %>% 
-#   print(n = Inf)
 ```
