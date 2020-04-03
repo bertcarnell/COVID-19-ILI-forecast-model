@@ -32,7 +32,7 @@ covid_input_file <- paste0("COVID19_data_", today_date, ".RData")
 load(ili_input_file)
 load(covid_input_file)
 
-source("utility_functions.R")
+sapply(list.files("src", full.names = TRUE), function(z) {source(z); return(TRUE)}, USE.NAMES = FALSE)
 ```
 
 ## Combine ILInet and COVID-19 Datasets
