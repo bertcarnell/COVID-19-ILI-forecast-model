@@ -14,7 +14,7 @@ Create the model used to submit to the CDC COVID-19 ILI Forecasting Project
 
 ## Model Description
 
-[Model Metadata](state-forecast-data\bertcarnell-arima_glm\metadata-bertcarnell-arima_glm.txt)
+[Model Metadata](state-forecast-data/bertcarnell-arima_glm/metadata-bertcarnell-arima_glm.txt)
 
 
 
