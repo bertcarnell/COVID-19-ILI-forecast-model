@@ -22,9 +22,18 @@ require(assertthat)
 require(rehsape2)
 
 ################################################################################
-# filenames
+# constants
 
-today_date <- "2020-03-28" # before Sunday
+today_date <- "2020-04-03" # before Sunday, best if Friday
+current_ili_week <- 13 # max(model_data_post$week)
+current_ili_year <- 2020
+current_ili_date <- as.Date("2020-03-22") # Sunday - MMWRweek(current_ili_date)
+
+assertthat::assert_that(current_ili_week == MMWRweek(today_date)$MMWRweek - 1)
+assertthat::assert_that(current_ili_week == MMWRweek(current_ili_date)$MMWRweek)
+
+################################################################################
+# filenames
 
 ili_input_file <- paste0("ILI_data_", today_date, ".RData")
 covid_input_file <- paste0("COVID19_data_", today_date, ".RData")
@@ -210,11 +219,6 @@ model_data_post <- within(model_data_post,
   inflation <- ifelse(resid_unw_ili < 0, 
                       abs(resid_unw_ili) / pconfirmed / total_patients, 1))
 
-
-current_ili_week <- 12 # max(model_data_post$week)
-current_ili_year <- 2020
-current_ili_date <- as.Date("2020-03-15") # Sunday - MMWRweek(current_ili_date)
-
 # find the mean inflation over the observed days after 1/22
 mean_inflation <- mean(model_data_post$inflation)
 
@@ -237,7 +241,11 @@ covid_daily_state <- covid_daily %>%
   summarise(Confirmed = sum(Confirmed))
 covid_daily_state$ndate <- as.numeric(covid_daily_state$date)
 
-covid_daily_state_pred_data <- data.frame(date = as.Date(today_date) + 1:(5*7))
+#covid_daily_state_pred_data <- data.frame(date = as.Date(today_date) + 1:(5*7))
+covid_daily_state_pred_data <- data.frame(
+  date = MMWRweek::MMWRweek2Date(current_ili_year, current_ili_week + 2, 1) + 
+    0:(WEEKS_AHEAD - 2)*7)
+
 covid_daily_state_pred_data$ndate <- as.numeric(covid_daily_state_pred_data$date)
 covid_daily_state_pred_data$mmwrweek <-
   MMWRweek::MMWRweek(covid_daily_state_pred_data$date)$MMWRweek
@@ -279,16 +287,20 @@ if (is.na(coef(lm1)[3]) || coef(lm1)[3] >= 0)
   # plot(g)
 }
 
+# first week of actual COVID cases to 1 week past the current ILI week
 covid_daily_state_post <- covid_daily_state %>%
   group_by(mmwrweek) %>%
   summarise(pred = max(pred),
             actual = max(Confirmed),
             pred_ili = max(pred) * mean_inflation) # percent scale
+assertthat::assert_that(max(covid_daily_state_post$mmwrweek) == current_ili_week + 1)
 
 covid_daily_state_pred <- covid_daily_state_pred_data %>%
   group_by(mmwrweek) %>%
   summarise(pred = max(pred),
             pred_ili = max(pred) * mean_inflation) # percent scale
+assertthat::assert_that(nrow(covid_daily_state_pred) == WEEKS_AHEAD - 1)
+assertthat::assert_that(min(covid_daily_state_pred$mmwrweek) == current_ili_week + 2)
 ```
 
 #### Add COVID prediction to ILI prediction
@@ -315,7 +327,7 @@ ggplot() +
 
 k_col <- ncol(arima2_fcst_result_plus$p_bin)
 plot_data <- data.frame(
-  ili = rep(reportin_bin_centers, times = k_col),
+  ili = rep(reporting_bin_centers, times = k_col),
   prob = c(arima2_fcst_result_plus$p_bin),
   week = rep(paste0("Week Ahead ", (6 - k_col + 1):6), each = nrow(arima2_fcst_result_plus$p_bin))
 )
@@ -326,7 +338,7 @@ plot_data2 <- data.frame(
 
 ggplot(plot_data) +  
   geom_histogram(aes(x = ili, y = ..density.., weight = prob), 
-                 breaks = reportin_bins, position = "identity") +
+                 breaks = reporting_bins, position = "identity") +
   facet_grid(week ~ .) +
   theme_bw() +
   theme(strip.text.y = element_text(angle = 0)) +

@@ -18,7 +18,7 @@ require(magrittr)
 ################################################################################
 # Output file
 
-today_date <- as.Date("2020-03-28") # Sys.Date()
+today_date <- as.Date("2020-04-03") # Sys.Date()
 output_file <- paste0("ILI_data_", today_date, ".RData")
 
 ################################################################################

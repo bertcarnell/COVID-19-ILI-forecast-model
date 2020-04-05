@@ -23,7 +23,7 @@ require(forecast)
 ################################################################################
 # filenames
 
-today_date <- "2020-03-28" # before Sunday
+today_date <- "2020-04-03" # before Sunday, Friday is best
 
 ili_input_file <- paste0("ILI_data_", today_date, ".RData")
 covid_input_file <- paste0("COVID19_data_", today_date, ".RData")
@@ -36,9 +36,13 @@ sapply(list.files("src", full.names = TRUE), function(z) {source(z); return(TRUE
 ################################################################################
 # Constants
 
-current_ili_week <- 12 # max(model_data_post$week)
+current_ili_week <- 13 # max(model_data_post$week)
 current_ili_year <- 2020
-current_ili_date <- as.Date("2020-03-15") # Sunday - MMWRweek(current_ili_date)
+current_ili_date <- as.Date("2020-03-22") # Sunday - MMWRweek(current_ili_date)
+
+assertthat::assert_that(current_ili_week == MMWRweek(today_date)$MMWRweek - 1)
+assertthat::assert_that(current_ili_week == MMWRweek(current_ili_date)$MMWRweek)
+
 ```
 
 ## Combine Datasets
@@ -124,6 +128,7 @@ for (i in seq_along(hhs_regions_map$state))
   arima_result_list[[i]] <- state_arima_build(model_state, model_data,
                                               arima_model_list[[i]])
 }
+save(arima_result_list, file = "ILI_state_auto_arima_results.RData")
 ```
 
 #### COVID Daily Prediction for Each State
@@ -139,7 +144,7 @@ for (i in seq_along(hhs_regions_map$state))
   model_state <- hhs_regions_map$state[i]
   covid_result_list[[i]] <- covid_prediction_builder(model_state, arima_result_list[[i]]$mean_inflation)
 }
-
+save(covid_result_list, file = "covid_results.Rdata")
 ```
 
 #### Add COVID prediction to ILI prediction
@@ -161,7 +166,7 @@ for (i in seq_along(hhs_regions_map$state))
     c(crl$covid_daily_state_post$mmwrweek, 
       crl$covid_daily_state_pred$mmwrweek))
 }
-save(arima_plus_result_list, file = paste("ILI_state_arima_plus_", today_date, ".Rdata"))
+save(arima_plus_result_list, file = paste0("ILI_state_arima_plus_", today_date, ".Rdata"))
 
 ```
 

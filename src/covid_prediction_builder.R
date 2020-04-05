@@ -16,20 +16,31 @@ covid_prediction_builder <- function(model_state, mean_inflation)
                Confirmed > 0,
              select = c("Confirmed", "mmwrweek", "date"))
   }
-  coiv_daily_state <- covid_daily_state %>%
+  covid_daily_state <- covid_daily_state %>%
     group_by(mmwrweek, date) %>%
     summarise(Confirmed = sum(Confirmed))
   covid_daily_state$ndate <- as.numeric(covid_daily_state$date)
   
-  covid_daily_state_pred_data <- data.frame(date = as.Date(today_date) + 1:((WEEKS_AHEAD - 1) * 7))
+  #covid_daily_state_pred_data <- data.frame(date = as.Date(today_date) + 1:((WEEKS_AHEAD - 1) * 7))
+  
+  covid_daily_state_pred_data <- data.frame(
+    date = MMWRweek::MMWRweek2Date(current_ili_year, current_ili_week + 2, 1) + 
+      0:(WEEKS_AHEAD - 2)*7)
+  
   covid_daily_state_pred_data$ndate <- as.numeric(covid_daily_state_pred_data$date)
   covid_daily_state_pred_data$mmwrweek <-
     MMWRweek::MMWRweek(covid_daily_state_pred_data$date)$MMWRweek
   
-  lm1 <- lm(log(Confirmed) ~ ndate + I(ndate^2), data = covid_daily_state,
-            weights = 1 / as.numeric((as.Date(today_date) - covid_daily_state$date + 1)))
+  # when dates are before march 1st, they are usually low numbers and don't fit
+  #   the concave down quadratic well.  
+  ind <- which(covid_daily_state$date >= as.Date("2020-03-01"))
+  if (length(ind) < 3)
+    ind <- 1:nrow(covid_daily_state)
+  
+  lm1 <- lm(log(Confirmed) ~ ndate + I(ndate^2), data = covid_daily_state[ind,],
+            weights = 1 / as.numeric((as.Date(today_date) - covid_daily_state$date[ind] + 1)))
   covid_pred_params <- coef(lm1)
-  covid_daily_state$pred <- exp(predict(lm1))
+  covid_daily_state$pred <- exp(predict(lm1, newdata = covid_daily_state))
   # suppress messages about a rank deficient fit since we are going to fix it
   suppressWarnings({
     covid_daily_state_pred_data$pred <- exp(predict(lm1, newdata = covid_daily_state_pred_data))
@@ -38,10 +49,10 @@ covid_prediction_builder <- function(model_state, mean_inflation)
   if (is.na(coef(lm1)[3]) || coef(lm1)[3] >= 0)
   {
     M <- list(
-      X = matrix(c(rep(1, nrow(covid_daily_state)),
-                   covid_daily_state$ndate,
-                   covid_daily_state$ndate^2),
-                 nrow = nrow(covid_daily_state), ncol = 3), 
+      X = matrix(c(rep(1, nrow(covid_daily_state[ind,])),
+                   covid_daily_state$ndate[ind],
+                   covid_daily_state$ndate[ind]^2),
+                 nrow = nrow(covid_daily_state[ind,]), ncol = 3), 
       p = c(1, 2, -1),
       off = array(0, 0),
       S = list(),
@@ -49,11 +60,15 @@ covid_prediction_builder <- function(model_state, mean_inflation)
       bin = 0.001,
       C = matrix(0, 0, 0),
       sp = array(0, 0),
-      y = log(covid_daily_state$Confirmed),
-      w = 1 / as.numeric((as.Date(today_date) - covid_daily_state$date + 1))
+      y = log(covid_daily_state$Confirmed[ind]),
+      w = 1 / as.numeric((as.Date(today_date) - covid_daily_state$date[ind] + 1))
     )
     covid_pred_params <- pcls(M)
-    covid_daily_state$pred <- exp(as.numeric(M$X %*% covid_pred_params))
+    m <- matrix(c(rep(1, nrow(covid_daily_state)),
+                  covid_daily_state$ndate,
+                  covid_daily_state$ndate^2),
+                nrow = nrow(covid_daily_state), ncol = 3)
+    covid_daily_state$pred <- exp(as.numeric(m %*% covid_pred_params))
     Xnew <- matrix(c(rep(1, nrow(covid_daily_state_pred_data)),
                      covid_daily_state_pred_data$ndate,
                      covid_daily_state_pred_data$ndate^2),
@@ -72,5 +87,7 @@ covid_prediction_builder <- function(model_state, mean_inflation)
               pred_ili = max(pred) * mean_inflation) # percent scale
   
   return(list(covid_daily_state_post = covid_daily_state_post,
-              covid_daily_state_pred = covid_daily_state_pred))
+              covid_daily_state_pred = covid_daily_state_pred,
+              covid_daily_state = covid_daily_state,
+              covid_daily_state_pred_data = covid_daily_state_pred_data))
 }
