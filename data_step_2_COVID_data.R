@@ -10,7 +10,7 @@ require(MMWRweek)
 # Constants
 
 today_date <- as.Date("2020-04-03") # Sys.Date()
-output_file <- paste0("COVID19_data_", today_date, ".RData")
+output_file <- file.path("data", paste0("COVID19_data_", today_date, ".RData"))
 
 ################################################################################
 # Functions

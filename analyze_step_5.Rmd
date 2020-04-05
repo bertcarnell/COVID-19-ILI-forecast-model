@@ -25,8 +25,17 @@ require(forecast)
 
 today_date <- "2020-04-03" # before Sunday, Friday is best
 
-ili_input_file <- paste0("ILI_data_", today_date, ".RData")
-covid_input_file <- paste0("COVID19_data_", today_date, ".RData")
+ili_input_file <- file.path("data", paste0("ILI_data_", today_date, ".RData"))
+covid_input_file <- file.path("data", paste0("COVID19_data_", today_date, 
+                                             ".RData"))
+ili_state_auto_arima_output_file <- file.path("data", 
+                                              "ILI_state_auto_arima.RData")
+ili_state_auto_arima_results_output_file <- file.path("data", 
+                                                      "ILI_state_auto_arima_results.RData")
+covid_results_output_file <- file.path("data", "covid_results.Rdata")
+ili_state_arima_plus_output_file <- file.path("data", 
+                                              paste0("ILI_state_arima_plus_", 
+                                                     today_date, ".Rdata"))
 
 load(ili_input_file)
 load(covid_input_file)
@@ -43,6 +52,10 @@ current_ili_date <- as.Date("2020-03-22") # Sunday - MMWRweek(current_ili_date)
 assertthat::assert_that(current_ili_week == MMWRweek(today_date)$MMWRweek - 1)
 assertthat::assert_that(current_ili_week == MMWRweek(current_ili_date)$MMWRweek)
 
+ili_covid_state_forecast_file <- file.path("state-forecast-data", 
+                                           "bertcarnell-arima_glm",
+                                           paste0("2020-ew", current_ili_week, 
+                                                  "-bertcarnell-arima_glm.csv"))
 ```
 
 ## Combine Datasets
@@ -110,10 +123,10 @@ if (FALSE)
     }
   }
        
-  save(arima_model_list, file = "ILI_state_auto_arima.RData")  
+  save(arima_model_list, file = ili_state_auto_arima_output_file)  
 } else
 {
-  load( "ILI_state_auto_arima.RData")
+  load(ili_state_auto_arima_output_file)
 }
 
 arima_result_list <- vector("list", length(hhs_regions_map$state))
@@ -128,7 +141,7 @@ for (i in seq_along(hhs_regions_map$state))
   arima_result_list[[i]] <- state_arima_build(model_state, model_data,
                                               arima_model_list[[i]])
 }
-save(arima_result_list, file = "ILI_state_auto_arima_results.RData")
+save(arima_result_list, file = ili_state_auto_arima_results_output_file)
 ```
 
 #### COVID Daily Prediction for Each State
@@ -144,7 +157,7 @@ for (i in seq_along(hhs_regions_map$state))
   model_state <- hhs_regions_map$state[i]
   covid_result_list[[i]] <- covid_prediction_builder(model_state, arima_result_list[[i]]$mean_inflation)
 }
-save(covid_result_list, file = "covid_results.Rdata")
+save(covid_result_list, file = covid_results_output_file)
 ```
 
 #### Add COVID prediction to ILI prediction
@@ -166,7 +179,7 @@ for (i in seq_along(hhs_regions_map$state))
     c(crl$covid_daily_state_post$mmwrweek, 
       crl$covid_daily_state_pred$mmwrweek))
 }
-save(arima_plus_result_list, file = paste0("ILI_state_arima_plus_", today_date, ".Rdata"))
+save(arima_plus_result_list, file = ili_state_arima_plus_output_file)
 
 ```
 
@@ -233,10 +246,7 @@ state_template <- bind_rows(
         type = factor(type, levels = c("point", "bin"))) %>%
     arrange(location, target, type)
 
-write_csv(state_template, 
-          path = file.path("state-forecast-data", "bertcarnell-arima_glm",
-                           paste0("2020-ew", current_ili_week, 
-                                  "-bertcarnell-arima_glm.csv")))
+write_csv(state_template, path = ili_covid_state_forecast_file)
 ```
 
 #### QA

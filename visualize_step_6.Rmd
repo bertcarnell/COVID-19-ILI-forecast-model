@@ -22,16 +22,23 @@ require(assertthat)
 
 today_date <- "2020-04-03" # before Sunday
 
-ili_input_file <- paste0("ILI_data_", today_date, ".RData")
-covid_input_file <- paste0("COVID19_data_", today_date, ".RData")
-arima_input_file <- paste0("ILI_state_arima_plus_", today_date, ".RData")
+ili_input_file <- file.path("data", paste0("ILI_data_", today_date, ".RData"))
+covid_input_file <- file.path("data", paste0("COVID19_data_", today_date, 
+                                             ".RData"))
+ili_state_auto_arima_output_file <- file.path("data", 
+                                              "ILI_state_auto_arima.RData")
+ili_state_auto_arima_results_output_file <- file.path("data", 
+                                                      "ILI_state_auto_arima_results.RData")
+covid_results_output_file <- file.path("data", "covid_results.Rdata")
+arima_input_file <- file.path("data", paste0("ILI_state_arima_plus_", 
+                                             today_date, ".Rdata"))
 
 load(ili_input_file)
 load(covid_input_file)
 load(arima_input_file)
-load("ILI_state_auto_arima.RData")
-load("ILI_state_auto_arima_results.RData")
-load("covid_results.Rdata")
+load(ili_state_auto_arima_output_file)
+load(ili_state_auto_arima_results_output_file)
+load(covid_results_output_file)
 
 sapply(list.files("src", full.names = TRUE), function(z) {source(z); return(TRUE)}, USE.NAMES = FALSE)
 ```
