@@ -1,0 +1,107 @@
+---
+title: "ILI Prediction - Visualize Results"
+author: "Rob Carnell"
+date: "April 3, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+################################################################################
+# Packages
+
+require(magrittr)
+require(dplyr)
+require(ggplot2)
+require(MMWRweek)
+require(assertthat)
+
+################################################################################
+# filenames
+
+today_date <- "2020-04-03" # before Sunday
+
+ili_input_file <- paste0("ILI_data_", today_date, ".RData")
+covid_input_file <- paste0("COVID19_data_", today_date, ".RData")
+arima_input_file <- paste0("ILI_state_arima_plus_", today_date, ".RData")
+
+load(ili_input_file)
+load(covid_input_file)
+load(arima_input_file)
+load("ILI_state_auto_arima.RData")
+load("ILI_state_auto_arima_results.RData")
+load("covid_results.Rdata")
+
+sapply(list.files("src", full.names = TRUE), function(z) {source(z); return(TRUE)}, USE.NAMES = FALSE)
+```
+
+## State Results
+
+```{r state_loop}
+for (i in seq_along(hhs_regions_map$state))
+{
+  print(paste0(i, ": ", as.character(hhs_regions_map$state[i])))
+  if (as.character(hhs_regions_map$state[i]) %in% 
+      c("Commonwealth of the Northern Mariana Islands")) 
+    next
+  #model_state <- hhs_regions_map$state[i]
+  #model_data <- subset(stateflu3, stateflu3$region == model_state)
+  
+  crl <- covid_result_list[[i]]
+  g3 <- ggplot(crl$covid_daily_state) +
+    geom_point(aes(x = date, y = Confirmed)) +
+    geom_line(aes(x = date, y = pred)) +
+    geom_line(aes(x = date, y = pred), 
+              data = crl$covid_daily_state_pred_data, col = "blue") +
+    labs(x = "", y = "Confirmed COVID-19") +
+    scale_y_log10()
+  plot(g3)
+  
+  ts_model_data <- arima_model_list[[i]]$ts_model_data
+  arima2 <- arima_model_list[[i]]$arima_model
+  arima2_fcst <- arima_result_list[[i]]$arima_fcst
+  arima2_fcst_result_plus <- arima_plus_result_list[[i]]
+  
+  plot_data <- data.frame(time = as.numeric(time(ts_model_data)),
+                          actuals = as.numeric(ts_model_data),
+                          fitted = as.numeric(arima2$fitted))
+  plot_data_pred <- data.frame(time = as.numeric(time(arima2_fcst$mean)),
+                               pred = as.numeric(arima2_fcst_result_plus$point_logit_scale))
+
+  g1 <- ggplot() + 
+    geom_line(aes(x = time, y = actuals, col = "Actuals"), data = plot_data) +
+    geom_line(aes(x = time, y = fitted, col = "Fitted"), data = plot_data) +
+    geom_line(aes(x = time, y = pred, col = "Predicted ILI + COVID-19"), 
+              data = plot_data_pred) +
+    coord_cartesian(xlim = c(2017.0, 2020.5), ylim = c(-9, -1)) +
+    labs(x = "", y = "ILI on the Logit scale", col = "Type")
+  plot(g1)
+
+  k_col <- ncol(arima2_fcst_result_plus$p_bin)
+  week_labels <- paste0("Week Ahead ", (WEEKS_AHEAD - k_col + 1):WEEKS_AHEAD)
+  plot_data <- data.frame(
+    ili = rep(reporting_bin_centers, times = k_col),
+    prob = c(arima2_fcst_result_plus$p_bin),
+    week = factor(rep(week_labels, 
+                      each = nrow(arima2_fcst_result_plus$p_bin)),
+                  levels = week_labels)
+  )
+  plot_data2 <- data.frame(
+    ili = arima2_fcst_result_plus$point,
+    week = factor(week_labels, levels = week_labels)
+  )
+  
+  g2 <- ggplot(plot_data) +  
+    geom_histogram(aes(x = ili, y = ..density.., weight = prob), 
+                   breaks = reporting_bins, position = "identity") +
+    facet_grid(week ~ .) +
+    theme_bw() +
+    theme(strip.text.y = element_text(angle = 0)) +
+    geom_vline(aes(xintercept = ili), data = plot_data2, col = "blue") +
+    labs(x = paste("Unweighted ILI in", hhs_regions_map$state[i]), y = "Density")
+  plot(g2)
+}
+
+
+```
