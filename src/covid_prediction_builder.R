@@ -1,24 +1,25 @@
-covid_prediction_builder <- function(model_state, mean_inflation)
+covid_prediction_builder <- function(model_state, mean_inflation, total_patients)
 {
-  #model_state <- hhs_regions_map$state[2]
-  #mean_inflation <- arima_result_list[[2]]$mean_inflation
+  #model_state <- hhs_regions_map$state[1]
+  #mean_inflation <- arima_result_list[[1]]$mean_inflation
   model_state_c <- as.character(model_state)
   if (model_state_c == "New York City")
   {
     covid_daily_state <- covid_daily %>%
       subset(Combined_Key == "New York City, New York, US" &
-               Confirmed > 0,
-             select = c("Confirmed", "mmwrweek", "date"))
+               !is.na(Active) & Active > 0,
+             select = c("Active", "Confirmed", "mmwrweek", "date"))
   } else
   {
     covid_daily_state <- covid_daily %>%
       subset(Province_State == as.character(model_state) &
-               Confirmed > 0,
-             select = c("Confirmed", "mmwrweek", "date"))
+               !is.na(Active) & Active > 0,
+             select = c("Active", "Confirmed", "mmwrweek", "date"))
   }
   covid_daily_state <- covid_daily_state %>%
     group_by(mmwrweek, date) %>%
-    summarise(Confirmed = sum(Confirmed))
+    summarise(Confirmed = sum(Confirmed),
+              Active = sum(Active))
   covid_daily_state$ndate <- as.numeric(covid_daily_state$date)
   
   #covid_daily_state_pred_data <- data.frame(date = as.Date(today_date) + 1:((WEEKS_AHEAD - 1) * 7))
@@ -37,12 +38,12 @@ covid_prediction_builder <- function(model_state, mean_inflation)
   if (length(ind) < 3)
     ind <- 1:nrow(covid_daily_state)
   
-  lm1 <- lm(log(Confirmed) ~ ndate + I(ndate^2), data = covid_daily_state[ind,],
+  lm1 <- lm(log(Active) ~ ndate + I(ndate^2), data = covid_daily_state[ind,],
             weights = 1 / as.numeric((as.Date(today_date) - covid_daily_state$date[ind] + 1)))
   covid_pred_params <- coef(lm1)
-  covid_daily_state$pred <- exp(predict(lm1, newdata = covid_daily_state))
   # suppress messages about a rank deficient fit since we are going to fix it
   suppressWarnings({
+    covid_daily_state$pred <- exp(predict(lm1, newdata = covid_daily_state))
     covid_daily_state_pred_data$pred <- exp(predict(lm1, newdata = covid_daily_state_pred_data))
   })
   
@@ -60,7 +61,7 @@ covid_prediction_builder <- function(model_state, mean_inflation)
       bin = 0.001,
       C = matrix(0, 0, 0),
       sp = array(0, 0),
-      y = log(covid_daily_state$Confirmed[ind]),
+      y = log(covid_daily_state$Active[ind]),
       w = 1 / as.numeric((as.Date(today_date) - covid_daily_state$date[ind] + 1))
     )
     covid_pred_params <- pcls(M)
@@ -78,13 +79,14 @@ covid_prediction_builder <- function(model_state, mean_inflation)
   covid_daily_state_post <- covid_daily_state %>%
     group_by(mmwrweek) %>%
     summarise(pred = max(pred),
-              actual = max(Confirmed),
-              pred_ili = max(pred) * mean_inflation) # percent scale
+              actual = max(Active),
+              actual_confirmed = max(Confirmed),
+              pred_ili = max(pred) * mean_inflation / (total_patients + max(pred))) # percent scale
   
   covid_daily_state_pred <- covid_daily_state_pred_data %>%
     group_by(mmwrweek) %>%
     summarise(pred = max(pred),
-              pred_ili = max(pred) * mean_inflation) # percent scale
+              pred_ili = max(pred) * mean_inflation / (total_patients + max(pred))) # percent scale
   
   return(list(covid_daily_state_post = covid_daily_state_post,
               covid_daily_state_pred = covid_daily_state_pred,

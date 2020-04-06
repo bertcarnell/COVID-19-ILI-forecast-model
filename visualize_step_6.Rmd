@@ -45,7 +45,7 @@ sapply(list.files("src", full.names = TRUE), function(z) {source(z); return(TRUE
 
 ## State Results
 
-```{r state_loop}
+```{r state_loop, echo=FALSE}
 for (i in seq_along(hhs_regions_map$state))
 {
   print(paste0(i, ": ", as.character(hhs_regions_map$state[i])))
@@ -57,11 +57,11 @@ for (i in seq_along(hhs_regions_map$state))
   
   crl <- covid_result_list[[i]]
   g3 <- ggplot(crl$covid_daily_state) +
-    geom_point(aes(x = date, y = Confirmed)) +
+    geom_point(aes(x = date, y = Active)) +
     geom_line(aes(x = date, y = pred)) +
     geom_line(aes(x = date, y = pred), 
               data = crl$covid_daily_state_pred_data, col = "blue") +
-    labs(x = "", y = "Confirmed COVID-19") +
+    labs(x = "", y = "Active COVID-19") +
     scale_y_log10()
   plot(g3)
   
@@ -81,7 +81,7 @@ for (i in seq_along(hhs_regions_map$state))
     geom_line(aes(x = time, y = fitted, col = "Fitted"), data = plot_data) +
     geom_line(aes(x = time, y = pred, col = "Predicted ILI + COVID-19"), 
               data = plot_data_pred) +
-    coord_cartesian(xlim = c(2017.0, 2020.5), ylim = c(-9, -1)) +
+    coord_cartesian(xlim = c(2017.0, 2020.5)) +
     labs(x = "", y = "ILI on the Logit scale", col = "Type")
   plot(g1)
 
@@ -96,7 +96,8 @@ for (i in seq_along(hhs_regions_map$state))
   )
   plot_data2 <- data.frame(
     ili = arima2_fcst_result_plus$point,
-    week = factor(week_labels, levels = week_labels)
+    week = factor(week_labels, levels = week_labels),
+    ili_actual = c(arima_result_list[[i]]$model_data_post$unweighted_ili, rep(NA, WEEKS_AHEAD))
   )
   
   g2 <- ggplot(plot_data) +  
@@ -106,6 +107,8 @@ for (i in seq_along(hhs_regions_map$state))
     theme_bw() +
     theme(strip.text.y = element_text(angle = 0)) +
     geom_vline(aes(xintercept = ili), data = plot_data2, col = "blue") +
+    geom_vline(aes(xintercept = ili_actual), 
+               data = subset(plot_data2, !is.na(ili_actual)), col = "red") +
     labs(x = paste("Unweighted ILI in", hhs_regions_map$state[i]), y = "Density")
   plot(g2)
 }

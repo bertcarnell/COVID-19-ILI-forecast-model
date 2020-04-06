@@ -1,6 +1,6 @@
 state_auto_arima_build <- function(model_state, model_data)
 {
-  # model_state <- hhs_regions_map$state[51]
+  # model_state <- hhs_regions_map$state[1]
   # model_data <- subset(stateflu3, stateflu3$region == model_state)
   
   # find the first mmwrweek where confirmed is > 0
@@ -31,20 +31,25 @@ state_auto_arima_build <- function(model_state, model_data)
   model_data_pre$unweighted_ili_modeling[ind] <- 0.0005
   model_data_pre$unweighted_ili_modeling <- qlogis(model_data_pre$unweighted_ili_modeling)
   
+  year_start <- MMWRweek::MMWRweek(min(model_data_pre$week_start))$MMWRyear
+  week_start <- MMWRweek::MMWRweek(min(model_data_pre$week_start))$MMWRweek
+  
   ts_model_data <- ts(model_data_pre$unweighted_ili_modeling, 
-                      start = c(2010, 40), frequency = 52)
+                      start = c(year_start, week_start), frequency = 52)
   
   arima2 <- forecast::auto.arima(ts_model_data, max.p = 3, max.q = 2, max.P = 2,
                                  max.Q = 2, max.d = 2, max.D = 1,
                                  start.p = 1, start.q = 1, start.P = 1, start.Q = 1)
   # Auto arima is producting some negative coefficient varinaces
   suppressWarnings({
-    if (any(is.na(sqrt(diag(vcov(arima_model_list[[i]]$arima_model))))))
-    {
-      arima2 <- forecast::Arima(ts_model_data, order = c(1, 0, 1),
-                                seasonal = c(1, 1, 0), include.drift = TRUE)
-    }
+    arima_model_se <- sqrt(diag(vcov(arima2)))
   })
+  # if the covariances are negative, fall back to a simple model
+  if (any(is.na(arima_model_se)))
+  {
+    arima2 <- forecast::Arima(ts_model_data, order = c(1, 0, 1),
+                              seasonal = c(1, 1, 0), include.drift = TRUE)
+  }
   return(list(arima_model = arima2,
               ts_model_data = ts_model_data,
               model_data_pre = model_data_pre,

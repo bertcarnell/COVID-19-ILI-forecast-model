@@ -165,6 +165,9 @@ covid_daily$Admin2[ind] <- covid_daily$Province_State[ind]
 covid_daily$Province_State[ind] <- state_abb_2_name(trimws(temp))
 # make the Combined_Key into the NYC identifier
 covid_daily$Combined_Key[ind_nyc] <- "New York City, New York, US"
+# create actives
+covid_daily$Active <- with(covid_daily, 
+  ifelse(is.na(Recovered) | is.na(Deaths), Confirmed, pmax(1, Confirmed - Recovered - Deaths)))
 
 save(covid_data, covid_deaths, covid_recovered, covid_daily,
      file = output_file)

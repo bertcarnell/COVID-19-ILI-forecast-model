@@ -1,8 +1,8 @@
 create_result_from_arima_fcst_plus <- function(obj, add_ili, mmwrweeks)
 {
-  #obj <- arima_result_list[[3]]$arima_fcst
-  #add_ili <- c(covid_result_list[[3]]$covid_daily_state_post$pred_ili, covid_result_list[[3]]$covid_daily_state_pred$pred_ili)
-  #mmwrweeks <- c(covid_result_list[[3]]$covid_daily_state_post$mmwrweek, covid_result_list[[3]]$covid_daily_state_pred$mmwrweek)
+  #obj <- arima_result_list[[1]]$arima_fcst
+  #add_ili <- c(covid_result_list[[1]]$covid_daily_state_post$pred_ili, covid_result_list[[1]]$covid_daily_state_pred$pred_ili)
+  #mmwrweeks <- c(covid_result_list[[1]]$covid_daily_state_post$mmwrweek, covid_result_list[[1]]$covid_daily_state_pred$mmwrweek)
   assertthat::assert_that("forecast" %in% class(obj))
   
   # point estimate on the logit scale

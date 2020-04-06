@@ -5,7 +5,8 @@ model_abbr: arima_glm
 model_contributors: Robert Carnell <bertcarnell@gmail.com>
 data_source1: ilinet
 data_source2: https://raw.github.com/CSSEGISandData/COVID-19
-interventions: this model does not factor in any current or future interventions.
+interventionsYN: Yes
+interventions: This model tracks current intervention strategies without future changes.
 this_model_is_an_ensemble: FALSE
 methods: An ARIMA model is fit to the logit-transformed unweighted ILI data
   from ILInet using the forecast R package for each state.  Only data from 

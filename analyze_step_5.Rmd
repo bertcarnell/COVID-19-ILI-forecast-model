@@ -98,7 +98,7 @@ stateflu3 <- within(stateflu3,
 #### Build an auto.arima model for each state
 
 ```{r arima, echo=FALSE}
-if (FALSE)
+if (!file.exists(ili_state_auto_arima_output_file))
 {
   arima_model_list <- vector("list", length(hhs_regions_map$state))
   for (i in seq_along(hhs_regions_map$state))
@@ -111,9 +111,9 @@ if (FALSE)
     model_data <- subset(stateflu3, stateflu3$region == model_state)
     arima_model_list[[i]] <- state_auto_arima_build(model_state, model_data)
   }
+  # QA the fits
   for (i in seq_along(hhs_regions_map$state))
   {
-    print(paste0(i, ": ", as.character(hhs_regions_map$state[i])))
     if (as.character(hhs_regions_map$state[i]) %in% 
         c("Commonwealth of the Northern Mariana Islands")) 
       next
@@ -155,7 +155,10 @@ for (i in seq_along(hhs_regions_map$state))
       c("Commonwealth of the Northern Mariana Islands")) 
     next
   model_state <- hhs_regions_map$state[i]
-  covid_result_list[[i]] <- covid_prediction_builder(model_state, arima_result_list[[i]]$mean_inflation)
+  arl <- arima_result_list[[i]]
+  covid_result_list[[i]] <- covid_prediction_builder(
+    model_state, arl$mean_inflation, 
+    arl$model_data_post$total_patients[nrow(arl$model_data_post)])
 }
 save(covid_result_list, file = covid_results_output_file)
 ```
@@ -172,6 +175,9 @@ for (i in seq_along(hhs_regions_map$state))
     next
   crl <- covid_result_list[[i]]
   arl <- arima_result_list[[i]]
+  assertthat::assert_that(length(arl$arima_fcst$mean) == length(crl$covid_daily_state_post$pred_ili) +
+                            length(crl$covid_daily_state_pred$pred_ili),
+                          msg = paste("Error in prediction lengths in", hhs_regions_map$state[i]))
   arima_plus_result_list[[i]] <- create_result_from_arima_fcst_plus(
     arl$arima_fcst,
     c(crl$covid_daily_state_post$pred_ili, 
@@ -211,20 +217,24 @@ for (i in seq_along(hhs_regions_map$state))
   if (model_state_c == "Commonwealth of the Northern Mariana Islands")
     next
   aprl <- arima_plus_result_list[[i]]
+  arl <- arima_result_list[[i]]
   len <- length(aprl$point)
+  point_actual_fcst <- aprl$point
+  point_actual_fcst[1:nrow(arl$model_data_post)] <- arl$model_data_post$unweighted_ili
+  week_after_ew10 <- which(aprl$mmwrweeks >= 10)
   week1_week6 <- (len - WEEKS_AHEAD + 1):len
-  max_week_ind <- which.max(aprl$point[week1_week6])
+  max_week_ind <- which.max(point_actual_fcst[week_after_ew10])
   ind <- which(ili_points_template$location == model_state_c)
   ili_points_template$value[ind] <- c(aprl$point[week1_week6],
-                                      aprl$point[week1_week6][max_week_ind])
+                                      point_actual_fcst[week_after_ew10][max_week_ind])
 
   ind <- which(ili_bin_template$location == model_state_c)
   bin_results <- cbind(aprl$p_bin[, week1_week6],
-                                   aprl$p_bin[, week1_week6[max_week_ind]])
+                                   aprl$p_bin[, week_after_ew10[max_week_ind]])
   ili_bin_template$value[ind] <- c(t(bin_results))
 
   ind <- which(date_points_template$location == model_state_c)
-  max_week_label <- paste0("2020-ew", aprl$mmwrweeks[week1_week6[max_week_ind]])
+  max_week_label <- paste0("2020-ew", aprl$mmwrweeks[week_after_ew10[max_week_ind]])
   date_points_template$value[ind] <- max_week_label
 
   ind <- which(date_bins_template$location == model_state_c)
