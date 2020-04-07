@@ -2,25 +2,52 @@
 title: "Visualize All Teams"
 author: "Rob Carnell"
 date: "April 6, 2020"
-output: html_document
+output: 
+  html_document: 
+    toc: yes
+    toc_float: true
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
+################################################################################
+# Packages
+
 require(assertthat)
 require(magrittr)
 require(ggplot2)
 require(dplyr)
+require(cdcfluview)
+
+################################################################################
+# Constants
+
+# centers of the probability bins
+bin_centers <- c(seq(0.05, 24.5, by = 0.1), (25 + 100)/2)
+# weeks which have actuals since week 10 (e.g. if we are on the ew13 forecast
+#   then this should be 10:12)
+fcst_weeks <- 10:12
+WEEKS_AHEAD <- 6
+
+################################################################################
+# Filepaths
 
 if (Sys.info()["nodename"] == "L5CG8455J1T")
 {
   submission_path <- file.path("c:", "developer", "repositories", "COVID-19-ILI-forecasting-submissions")
-  assertthat::assert_that(file.exists(submission_path), msg = "Enter you path here")
+} else if (Sys.info()["nodename"] == "DESKTOP-EQA3H87")
+{
+  submission_path <- file.path("c:", "repositories", "COVID-19-ILI-forecasting-submissions-bc")
 } else
 {
   stop("Enter your path in an ifelse statement")
 }
+assertthat::assert_that(file.exists(submission_path), msg = "Enter the path to your repo checkout")
+
+################################################################################
+# data prep
+
 submission_path <- file.path(submission_path, "state-forecast-data")
 
 sub_files_full <- list.files(submission_path, recursive = TRUE, full.names = TRUE,
@@ -31,7 +58,7 @@ temp <- regexpr("[-]ew[0-9][0-9]+[-]", sub_files)
 sub_files_weeks <- gsub("-", "", substring(sub_files, first = temp, last = temp + attr(temp, "match.length") - 1))
 sub_files_teams <- sapply(strsplit(sub_files, "[/\\]"), function(z) z[1], USE.NAMES = FALSE)
 
-X <- lapply(sub_files_full, read.csv)
+X <- lapply(sub_files_full, read.csv, stringsAsFactors = FALSE)
 assertthat::assert_that(length(X) == length(sub_files_weeks))
 assertthat::assert_that(length(X) == length(sub_files_teams))
 
@@ -42,6 +69,11 @@ for (i in seq_along(X))
 }
 
 X <- do.call("rbind", X)
+X$location <- factor(X$location)
+X$target <- factor(X$target)
+X$type <- factor(X$type)
+X$fcst_week <- factor(X$fcst_week)
+X$team <- factor(X$team)
 
 X_pt_fcst <- X %>% dplyr::filter(type == "point" & !grepl("[pP]eak", target))
 X_pt_fcst$value <- as.numeric(X_pt_fcst$value)
@@ -58,9 +90,32 @@ X_peak_bins$value <- as.numeric(X_peak_bins$value)
 X_pt_week <- X %>% dplyr::filter(type == "point" & target == "Peak week")
 X_week_bins <- X %>% dplyr::filter(type == "bin" & target == "Peak week")
 
-bin_centers <- c(seq(0.05, 24.5, by = 0.1), (25 + 100)/2)
 X_fcst_bins$bin_centers <- bin_centers[round(as.numeric(X_fcst_bins$bin) / 0.1, 0) + 1]
 X_peak_bins$bin_centers <- bin_centers[round(as.numeric(X_peak_bins$bin) / 0.1, 0) + 1]
+
+stateflu <- cdcfluview::ilinet(region = "state", years = 2019)
+stateflu <- stateflu %>% dplyr::filter(year == 2020 & week >= 10)
+
+u_states <- unique(stateflu$region)
+plot_data <- expand.grid(location = u_states,
+                         target = paste(1:WEEKS_AHEAD, "wk ahead"),
+                         value = NA,
+                         week = fcst_weeks)
+plot_data$fcst_week <- paste0("ew", plot_data$week)
+for (i in seq_along(u_states))
+{
+  for (j in seq_along(fcst_weeks))
+  {
+    temp_stateflu <- stateflu %>% 
+      dplyr::filter(region == u_states[i] & week > fcst_weeks[j] &
+                    week <= fcst_weeks[j] + WEEKS_AHEAD)
+    ind <- which(plot_data$location == u_states[i] &
+                   plot_data$week == fcst_weeks[j])
+    plot_data$value[ind] <- c(temp_stateflu$unweighted_ili, 
+                              rep(NA, length(ind) - nrow(temp_stateflu)))
+  }
+}
+
 ```
 
 ## State Point Estimates
@@ -69,11 +124,13 @@ X_peak_bins$bin_centers <- bin_centers[round(as.numeric(X_peak_bins$bin) / 0.1, 
 for (i in seq_along(levels(X$location)))
 {
   Y <- X_pt_fcst %>% dplyr::filter(location == levels(X$location)[i] & !is.na(value))
+  Z <- plot_data %>% dplyr::filter(location == levels(X$location)[i] & !is.na(value))
   g <- ggplot(Y, aes(x = target, y = value, group = fcst_week, col = team)) +
     geom_point() +
     facet_grid(. ~ fcst_week) +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
-    labs(x = levels(X$location)[i], y = "ILI (%)", col = "")
+    labs(x = levels(X$location)[i], y = "ILI (%)", col = "") +
+    geom_point(aes(x = target, y = value, group = fcst_week), data = Z, col = "black")
   plot(g)
 }
 ```

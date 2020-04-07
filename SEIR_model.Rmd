@@ -1,0 +1,153 @@
+---
+title: "SEIR Modeling"
+author: "Rob Carnell"
+date: "April 6, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+require(deSolve)
+require(ggplot2)
+require(reshape2)
+```
+
+## Basics
+
+SIR Model
+
+- S: Susceptible
+- I: Infected + Infectious
+- R: Removed (dead or immune)
+
+SEIR Model
+
+- S: Susceptible
+- E: Exposed and Infected
+- I: Infectious
+- R: Removed (dead or immune)
+
+## SIR Model
+
+The sum of the compartments is the total population (100%)
+
+$$S(t) + I(t) + R(t) = 1$$
+
+The rate of decrease in the Susceptible is proportional to the fraction of
+the population who are infectious ($I/N$) and the number of susceptible.
+
+$$\frac{dS}{dt} = -\beta I S$$
+
+The rate of increase is the Infections is the rate of change in the Susceptible
+minus the rate at which Infectious turn to recovered.
+
+$$\frac{dI}{dt} = \beta I S - \gamma I$$
+
+$$ = \gamma I \left(\frac{\beta}{\gamma} S - 1 \right)$$
+$$ = \gamma I \left(r_0 S - 1 \right)$$
+
+The rate of change of the Recovered is equal to the rate the Infectios turn to
+recovered.
+
+$$\frac{dR}{dt} = \gamma I$$
+
+```{r sir, echo=FALSE}
+sir <- function(t, st, pa)
+{
+  dS <- -1 * pa$beta * st["I"] * st["S"]
+  dI <- pa$beta * st["I"] * st["S"] - pa$gamma * st["I"]
+  dR <- pa$gamma * st["I"]
+  return(list(c(dS, dI, dR)))
+}
+
+params <- list(beta = 5,
+               gamma = 2)
+state <- c(S = 0.99,
+           I = 0.01,
+           R = 0)
+
+times <- seq(0, 10, by = 0.1)
+out <- deSolve::ode(y = state, times = times, func = sir, parms = params)
+
+plot_data <- as.data.frame(out)
+plot_data <- melt(plot_data, id = "time")
+g <- ggplot(plot_data, aes(x = time, y = value, group = variable, col = variable)) +
+  geom_line() +
+  labs(x = "Time", y = "Population Fraction", col = "Compartment")
+plot(g)
+```
+
+## Reproduction number
+
+$$r_0 < 1$$
+
+```{r repro1, echo=FALSE}
+params <- list(beta = 1,
+               gamma = 2)
+state <- c(S = 0.90,
+           I = 0.10,
+           R = 0)
+
+times <- seq(0, 10, by = 0.1)
+out <- deSolve::ode(y = state, times = times, func = sir, parms = params)
+
+plot_data <- as.data.frame(out)
+plot_data <- melt(plot_data, id = "time")
+g <- ggplot(plot_data, aes(x = time, y = value, group = variable, col = variable)) +
+  geom_line() +
+  labs(x = "Time", y = "Population Fraction", col = "Compartment")
+plot(g)
+```
+
+$$r_0 > 1$$
+
+```{r repro2, echo=FALSE}
+params <- list(beta = 5,
+               gamma = 2)
+state <- c(S = 0.90,
+           I = 0.10,
+           R = 0)
+
+times <- seq(0, 10, by = 0.1)
+out <- deSolve::ode(y = state, times = times, func = sir, parms = params)
+
+plot_data <- as.data.frame(out)
+plot_data <- melt(plot_data, id = "time")
+g <- ggplot(plot_data, aes(x = time, y = value, group = variable, col = variable)) +
+  geom_line() +
+  labs(x = "Time", y = "Population Fraction", col = "Compartment")
+plot(g)
+```
+
+
+## Flattening the Curve
+
+```{r flat, echo=FALSE}
+params <- list(beta = 6,
+               gamma = 2)
+state <- c(S = 0.99,
+           I = 0.01,
+           R = 0)
+
+times <- seq(0, 10, by = 0.1)
+out1 <- deSolve::ode(y = state, times = times, func = sir, parms = params)
+
+params <- list(beta = 3,
+               gamma = 2)
+
+times <- seq(0, 10, by = 0.1)
+out2 <- deSolve::ode(y = state, times = times, func = sir, parms = params)
+
+plot_data1 <- as.data.frame(out)
+plot_data2 <- as.data.frame(out2)
+plot_data <- data.frame(time = c(plot_data1$time, plot_data2$time),
+                        I = c(plot_data1$I, plot_data2$I),
+                        label = c(rep("r_0 = 3.0", nrow(plot_data1)),
+                                  rep("r_0 = 1.5", nrow(plot_data2))))
+g <- ggplot(plot_data, aes(x = time, y = I, col = label, group = label)) +
+  geom_line() +
+  labs(x = "Time", y = "Population Fraction", col = "Scenario")
+plot(g)
+```
+
