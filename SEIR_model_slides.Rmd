@@ -1,0 +1,524 @@
+---
+title: "SEIR Modeling"
+author: "Rob Carnell"
+date: "April 6, 2020"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+require(deSolve)
+require(ggplot2)
+require(reshape2)
+require(magrittr)
+```
+
+## Solving Differential Equations
+
+### Separable, Homogenous System of ODEs
+
+- **Separable**: each differential equation is on an expression of one function of time
+- **Homogeneous**: only the functions and their derivatives are present.  No other functions of t
+- **Ordinary**: Only a function of t and derivates of t
+
+## Example ODE
+
+Imagine a process where water flows from bucket A to B to C at different rates.
+Plot the volume in each bucket with time.
+
+- $V_A$, $V_B$, $V_C$ are the volumes of water in the buckets ($L$).  $V_A \ge 0$, $V_B \ge 0$, $V_C \ge 0$
+- $k > 0$, $h > 0$, $k > h$ are the rates of water flow ($L/s$)
+- $V_A(0) = 5 L$, $V_B(0) = V_C(0) = 0$
+
+```{r water_diagram, echo=FALSE, fig.height=3, fig.width=5}
+temp <- DiagrammeR::grViz(diagram = "
+  digraph boxes_and {
+    graph[overlap = true, fontsize = 10, rankdir = LR]
+
+    node [shape = box] A; B; C
+
+    A->B [label='k']
+    B->C [label='h']
+  }")
+temp
+rm(temp) # helps to prevent "out of memory errors"
+
+```
+
+## Equations
+
+$$\frac{dV_A}{dt} = -k$$
+
+$$\frac{dV_B}{dt} = k - h$$
+
+$$\frac{dV_C}{dt} = h$$
+
+## Equations (2)
+
+Integrating each expression yields:
+
+$$\int_0^t \frac{dV_A}{dt}dt = V_A(t)-V_A(0) = -\int_0^t k dt = -kt + k(0) = -kt$$
+
+or
+
+$$\int \frac{dV_A}{dt}dt = V_A(t) = -\int k dt = -kt + C$$
+
+## Equations (3)
+
+$$V_A(0) = -k(0) + C,\ \ \ C = V_A(0)$$
+
+$$V_A(T_A) = 0 = -kT_A + V_A(0), \ \ \ T_A = \frac{V_A(0)}{k}$$
+
+
+$$V_A(t) = -kt + V_A(0), \ \ \ 0 \le t \le T_A$$
+
+## Equations (4)
+
+$$V_B(t) = (k - h)t + V_B(0), \ \ \ 0 \le t \le T_A$$
+
+$$V_B(t) = -ht + (k-h)T_A + V_B(0), \ \ \ T_A \lt t \le T_B$$
+
+$$T_B = \frac{kT_A + V_B(0)}{h}$$
+
+$$V_C(t) = ht + V_C(0), \ \ \ 0 \le t \le T_C$$
+
+$$T_C = \frac{V_A(0) - V_C(0)}{h}$$
+
+## Bucket Code
+
+```{r simple, echo=TRUE}
+VA <- function(t, k, VA0) ifelse(t > VA0 / k, 0, -k*t + VA0)
+VB <- function(t, k, h, VA0, VB0)
+{
+  TA <- VA0 / k
+  TB <- (k * TA + VB0) / h
+  ifelse(t < TB, 
+         ifelse(t < TA, (k - h) * t + VB0, -h * t + k*TA + VB0), 
+         0)
+}
+VC <- function(t, h, VA0, VC0) 
+{
+  TC <- (VA0 - VC0) / h 
+  ifelse(t < TC, h*t + VC0, h*TC + VC0)
+}
+```
+
+## Bucket Figure
+
+```{r simple_figure, echo = FALSE}
+plot_data <- data.frame(t = seq(0, 6, by = 0.1))
+plot_data$VA <- VA(plot_data$t, 3, 5)
+plot_data$VB <- VB(plot_data$t, 3, 1, 5, 0)
+plot_data$VC <- VC(plot_data$t, 1, 5, 0)
+plot_data <- plot_data %>% reshape2::melt(id = "t")
+
+g <- ggplot(plot_data, aes(x = t, y = value, col = variable)) +
+  geom_line() +
+  labs(x = "time", y = "Volume", col = "Bucket")
+plot(g)
+```
+
+## Linear Homogenous System of ODEs
+
+Brine Tank Cascade.  Water enters tank A and moves between tanks at a constant rate
+so that the tank volumes are constant.  Each tank has a different amount of salt
+in solution.
+
+- $V_A$, $V_B$, $V_C$ are the volumes of water in the buckets (L).  $V_A \ge 0$, $V_B \ge 0$, $V_C \ge 0$
+- $r > 0$ is the rates of water flow (L/s)
+- $x_A(t)$ is the amount of salt in bucket A (kg)
+
+```{r salt_diagram, echo=FALSE, fig.height=3, fig.width=5}
+temp <- DiagrammeR::grViz(diagram = "
+  digraph boxes_and {
+    graph[overlap = true, fontsize = 10, rankdir = LR]
+
+    node [shape = box] Fresh_Water; A; B; C; Drain
+
+    Fresh_Water->A [label='r']
+    A->B [label='r']
+    B->C [label='r']
+    C->Drain [label='r']
+  }")
+temp
+rm(temp) # helps to prevent "out of memory errors"
+```
+
+## Equations
+
+$$x'_A = \frac{-r}{V_A}x_A = -a x_A$$
+
+$$x'_B = \frac{r}{V_A}x_A - \frac{r}{V_B}x_B = a x_A - b x_b$$
+
+$$x'_C = \frac{r}{V_B}x_B - \frac{r}{V_C}x_C = b x_B - c x_C$$
+
+## Laplace transforms
+
+$$L[x_A(t)] = A(s)$$
+
+$$L[x'_A(t)] = sA(s) - x_A(0)$$
+
+Applied to our differential equations...
+
+$$sA(s) - x_A(0) = -aA(s)$$
+$$sB(s) - x_B(0) = aA(s) - bB(s)$$
+$$sC(s) - x_C(0) = bB(s) - cC(s)$$
+
+## Some algebra
+
+$$A(s) = \frac{x_A(0)}{s+a}$$
+
+$$x_A(t) = x_A(0)e^{-at}$$
+
+$$B(s) = \frac{ax_A(0)}{(s+a)(s+b)} + \frac{x_B(0)}{s+b}$$
+
+$$= \frac{-a x_A(0) / (a-b)}{s+a} + \frac{a x_A(0) / (a-b)}{s+b} + \frac{x_B(0)}{s+b}$$
+$$x_b(t) = \frac{-ax_A(0)}{a-b}e^{-at} + \frac{ax_A(0)}{a-b}e^{-bt} + x_B(0)e^{-bt}$$
+
+## Some Harder Algebra {.smaller}
+
+$$C(s) = \frac{-ab x_A(0) / (a-b)}{(s+a)(s+c)} + \frac{ab x_A(0) / (a-b)}{(s+b)(s+c)} + \frac{bx_B(0)}{(s+b)(s+c)} + \frac{x_C(0)}{s+c}$$
+
+$$C(s) = \frac{-w}{(s+a)(s+c)} + \frac{w}{(s+b)(s+c)} + \frac{g}{(s+b)(s+c)} + \frac{x_C(0)}{s+c}$$
+
+$$C(s) = \frac{w/(a-c)}{s+a} + \frac{-w/(a-c)}{s+c} + \frac{-w/(b-c)}{s+b} + \frac{w/(b-c)}{s+c} + $$
+
+$$\frac{-g/(b-c)}{s+b} + \frac{g/(b-c)}{s+c} + \frac{x_c(0)}{s+c}$$
+
+$$x_C(t) = \frac{abx_A(0)}{(a-b)(a-c)}e^{-at} + \frac{-abx_A(0)/(a-b) - bx_B(0)}{(b-c)}e^{-bt} +$$
+
+$$\frac{Stuff}{Other\ Stuff}e^{-ct}$$
+
+## Figure
+
+```{r salt, echo=FALSE}
+VA <- 20
+VB <- 40
+VC <- 60
+r <- 10
+a <- r / VA
+b <- r / VB
+cc <- r / VC
+xA0 <- 5
+xB0 <- 7
+xC0 <- 11
+w <- a*b*xA0/(a - b)
+g <- b*xB0
+pd <- data.frame(t = seq(0, 50, by = 0.1))
+pd$xA <- xA0*exp(-a*pd$t)
+pd$xB <- -a * xA0 / (a - b) * exp(-a*pd$t) + a * xA0 / (a - b) * exp(-b*pd$t) + xB0*exp(-b*pd$t)
+pd$xC <- w / (a - cc) * exp(-a*pd$t) +
+  -w / (a - cc) * exp(-cc*pd$t) +
+  -w / (b - cc) * exp(-b*pd$t) +
+  w / (b - cc) * exp(-cc*pd$t) +
+  -g / (b - cc) * exp(-b*pd$t) +
+  g / (b - cc) * exp(-cc*pd$t) +
+  xC0 * exp(-cc*pd$t)
+
+plot_data <- melt(pd, id = "t")
+g <- ggplot(plot_data, aes(x = t, y = value, group = variable, col = variable)) +
+  geom_line() +
+  labs(x = "Time", y = "Salt (kg)", col = "Bucket")
+plot(g)
+```
+
+## SIR Model
+
+- **S**: Susceptible
+- **I**: Infected + Infectious
+- **R**: Removed (recovered, dead, immune)
+- $\beta$: Rate of spread (1/time), P(transmission) per unit time
+- $1/\beta$: Mean time before infection
+- $\gamma$: Rate of recovery (1/time)
+- $1/\gamma$: Mean time to recovery
+
+```{r SIR_diagram, echo=FALSE, fig.height=3, fig.width=5}
+temp <- DiagrammeR::grViz(diagram = "
+  digraph boxes_and {
+    graph[overlap = true, fontsize = 10, rankdir = LR]
+
+    node [shape = box] S; I; R
+
+    S->I [label=<&beta;>]
+    I->R [label=<&gamma;>]
+  }")
+temp
+rm(temp) # helps to prevent "out of memory errors"
+
+```
+
+## Equations {.smaller}
+
+The sum of the compartments is the total population (100%)
+
+$$S(t) + I(t) + R(t) = 1$$
+
+The rate of decrease in the Susceptible is proportional to the fraction of
+the population who are infectious ($I/N$) and the number of susceptible.
+
+$$\frac{dS}{dt} = -\beta I S$$
+
+The rate of increase is the Infections is the rate of change in the Susceptible
+minus the rate at which Infectious turn to recovered.
+
+$$\frac{dI}{dt} = \beta I S - \gamma I$$
+
+The rate of change of the Recovered is equal to the rate the Infectious turn to
+Recovered.
+
+$$\frac{dR}{dt} = \gamma I$$
+
+## Infection Rate
+
+$$\frac{dI}{dt} = \gamma I \left(\frac{\beta}{\gamma} S - 1 \right)$$
+$$ = \gamma I \left(r_0 S - 1 \right)$$
+
+Note that the Infected will decrease immediately if $r_0 < \frac{1}{S}$ which 
+people treat as effectively $r_0 < 1$ since $S$ starts near 100%.
+
+If $r_0 > 1$, then the Infected will grow before decreasing later.
+
+## Code
+
+An exact solution is possible for the SIR model, but not for more complicated
+models.  Most researchers use an ODE solver like `deSolve::ODE` in `R`
+
+```{r sir, echo=TRUE}
+sir <- function(t, st, pa)
+{
+  dS <- -1 * pa$beta * st["I"] * st["S"]
+  dI <- pa$beta * st["I"] * st["S"] - pa$gamma * st["I"]
+  dR <- pa$gamma * st["I"]
+  
+  return(list(c(dS, dI, dR)))
+}
+
+params <- list(beta = 2.2/7.5, gamma = 1/7.5)
+state <- c(S = 0.99, I = 0.01, R = 0)
+times <- seq(0, 125, by = 1)
+
+out <- deSolve::ode(y = state, times = times, func = sir, parms = params)
+```
+
+## Figure
+
+```{r plotsir, echo=FALSE}
+plot_data <- as.data.frame(out)
+plot_data <- melt(plot_data, id = "time")
+g <- ggplot(plot_data, aes(x = time, y = value, group = variable, col = variable)) +
+  geom_line() +
+  labs(x = "Time", y = "Population Fraction", col = "Compartment")
+plot(g)
+```
+
+## Reproduction < 1
+
+$$r_0 < 1$$
+
+```{r repro1, echo=FALSE}
+params <- list(beta = 1,
+               gamma = 2)
+state <- c(S = 0.90,
+           I = 0.10,
+           R = 0)
+
+times <- seq(0, 10, by = 0.1)
+out <- deSolve::ode(y = state, times = times, func = sir, parms = params)
+
+plot_data <- as.data.frame(out)
+plot_data <- melt(plot_data, id = "time")
+g <- ggplot(plot_data, aes(x = time, y = value, group = variable, col = variable)) +
+  geom_line() +
+  labs(x = "Time", y = "Population Fraction", col = "Compartment")
+plot(g)
+```
+
+## Reproduction Number > 1
+
+$$r_0 > 1$$
+
+```{r repro2, echo=FALSE}
+params <- list(beta = 5,
+               gamma = 2)
+state <- c(S = 0.90,
+           I = 0.10,
+           R = 0)
+
+times <- seq(0, 10, by = 0.1)
+out <- deSolve::ode(y = state, times = times, func = sir, parms = params)
+
+plot_data <- as.data.frame(out)
+plot_data <- melt(plot_data, id = "time")
+g <- ggplot(plot_data, aes(x = time, y = value, group = variable, col = variable)) +
+  geom_line() +
+  labs(x = "Time", y = "Population Fraction", col = "Compartment")
+plot(g)
+```
+
+
+## Flattening the Curve
+
+```{r flat, echo=FALSE}
+# r0 = 3
+params <- list(beta = 6,
+               gamma = 2)
+state <- c(S = 0.99,
+           I = 0.01,
+           R = 0)
+
+times <- seq(0, 10, by = 0.01)
+out1 <- deSolve::ode(y = state, times = times, func = sir, parms = params)
+
+# r0 = 1.5
+params <- list(beta = 3,
+               gamma = 2)
+state <- c(S = 0.99,
+           I = 0.01,
+           R = 0)
+
+times <- seq(0, 10, by = 0.01)
+out2 <- deSolve::ode(y = state, times = times, func = sir, parms = params)
+
+plot_data1 <- as.data.frame(out)
+plot_data2 <- as.data.frame(out2)
+plot_data <- data.frame(time = c(plot_data1$time, plot_data2$time),
+                        I = c(plot_data1$I, plot_data2$I),
+                        label = c(rep("r_0 = 3.0", nrow(plot_data1)),
+                                  rep("r_0 = 1.5", nrow(plot_data2))))
+g <- ggplot(plot_data, aes(x = time, y = I, col = label, group = label)) +
+  geom_line() +
+  labs(x = "Time", y = "Population Fraction", col = "Scenario")
+plot(g)
+```
+
+## Graph Simulation {.smaller}
+
+The `igraph` package also has an `sir` method:
+
+```{r sir2, echo=TRUE}
+# sample a graph with 100 vertices and 100 edges
+set.seed(1976)
+gr <- igraph::sample_gnm(100, 100, directed = FALSE, loops = FALSE)
+# start the epidemic at each node and simulate from there
+sm <- igraph::sir(gr, beta = 5, gamma = 2)
+plot(gr)
+```
+
+## Graph simulation figure
+
+```{r sir2_figure, echo=FALSE}
+plot(sm)
+```
+
+## Agent Based Model {.smaller}
+
+```{r abm, echo=TRUE}
+N <- 1000
+state <- factor(c(rep("S", N - 1), rep("I", 1)), levels = c("S", "I", "R"))
+number_contacts_per_time <- 2
+prob_infect_given_contact <- 0.50
+prob_recover_per_time <- 1/5
+tabs <- vector("list", 60)
+set.seed(1976)
+for (i in seq_along(tabs))
+{
+  tabs[[i]] <- table(state)
+  prob_contact_with_infected <- pmin(number_contacts_per_time * tabs[[i]]["I"] / N , 
+                                     (N - 1)/N)
+  contact_w_i <- rbinom(N, size = 1, prob = prob_contact_with_infected)
+  infect <- ifelse(state == "S" & contact_w_i == 1, 
+                   rbinom(N, 1, prob = prob_infect_given_contact), 
+                   0)
+  recover <- ifelse(state == "I", 
+                    rbinom(N, 1, prob = prob_recover_per_time), 
+                    0)
+  state[which(infect == 1)] <- "I"
+  state[which(recover == 1)] <- "R"
+}
+```
+
+## ABM Figure
+
+```{r plotabm, echo=FALSE}
+plot_data <- as.data.frame(do.call("rbind", tabs))
+plot_data$time <- seq_along(tabs)
+plot_data <- melt(plot_data, id = "time")
+
+g <- ggplot(plot_data, aes(x = time, y = value, col = variable, group = variable)) +
+  geom_line() +
+  labs(x = "Time", y = "Population", col = "State")
+plot(g)
+```
+
+
+## SEIR Model
+
+- **S**: Susceptible
+- **E**: Exposed and Infected or Incubating
+- **I**: Infectious
+- **R**: Removed (recovered, dead, immune)
+- $\beta$: Rate of spread (1/time), P(transmission) per unit time
+- $1/\beta$: Mean time before infection
+- $\sigma$: Incubation rate (1/time)
+- $1/\sigma$: Mean incubation time
+- $\gamma$: Rate of recovery (1/time)
+- $1/\gamma$: Mean time to recovery
+
+## SEIR Model (2)
+
+```{r SEIR_diagram, echo=FALSE}
+temp <- DiagrammeR::grViz(diagram = "
+  digraph boxes_and {
+    graph[overlap = true, fontsize = 10, rankdir = LR]
+
+    node [shape = box] S; E; I; R
+
+    S->E [label=<&beta;>]
+    E->I [label=<&sigma;>]
+    I->R [label=<&gamma;>]
+  }")
+temp
+rm(temp) # helps to prevent "out of memory errors"
+```
+
+## Equations
+
+$$\frac{dS}{dt} = -\beta I S$$
+
+$$\frac{dE}{dt} = \beta I S - \sigma E$$
+
+$$\frac{dI}{dt} = \sigma E - \gamma I$$
+
+$$\frac{dR}{dt} = \gamma I$$
+
+## Code
+
+```{r seir, echo=TRUE}
+seir <- function(t, st, pa)
+{
+  dS <- -1 * pa$beta * st["I"] * st["S"]
+  dE <- pa$beta * st["I"] * st["S"] - pa$sigma * st["E"]
+  dI <- pa$sigma * st["E"] - pa$gamma * st["I"]
+  dR <- pa$gamma * st["I"]
+  return(list(c(dS, dE, dI, dR)))
+}
+
+# estimates from https://www.who.int/bulletin/online_first/20-255695.pdf
+params <- list(beta = 2.2/7.5, gamma = 1 / 7.5, sigma = 1 / 2.3)
+state <- c(S = 0.98, E = 0.01, I = 0.00, R = 0.00)
+times <- seq(0, 175, by = 1)
+
+out <- deSolve::ode(y = state, times = times, func = seir, parms = params)
+```
+
+## Figure
+
+```{r plotseir, echo=FALSE}
+plot_data <- as.data.frame(out)
+plot_data <- melt(plot_data, id = "time")
+g <- ggplot(plot_data, aes(x = time, y = value, group = variable, col = variable)) +
+  geom_line() +
+  labs(x = "Time (days)", y = "Population Fraction", col = "Compartment")
+plot(g)
+```
