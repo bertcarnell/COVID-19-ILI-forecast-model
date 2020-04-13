@@ -24,10 +24,10 @@ require(rehsape2)
 ################################################################################
 # constants
 
-today_date <- "2020-04-03" # before Sunday, best if Friday
-current_ili_week <- 13 # max(model_data_post$week)
+today_date <- "2020-04-10" # before Sunday, best if Friday
+current_ili_week <- 14 # max(model_data_post$week)
 current_ili_year <- 2020
-current_ili_date <- as.Date("2020-03-22") # Sunday - MMWRweek(current_ili_date)
+current_ili_date <- as.Date("2020-03-29") # Sunday - MMWRweek(current_ili_date)
 
 assertthat::assert_that(current_ili_week == MMWRweek(today_date)$MMWRweek - 1)
 assertthat::assert_that(current_ili_week == MMWRweek(current_ili_date)$MMWRweek)

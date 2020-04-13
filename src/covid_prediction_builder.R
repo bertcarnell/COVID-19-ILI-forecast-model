@@ -2,6 +2,7 @@ covid_prediction_builder <- function(model_state, mean_inflation, total_patients
 {
   #model_state <- hhs_regions_map$state[1]
   #mean_inflation <- arima_result_list[[1]]$mean_inflation
+  #total_patients <- arima_result_list[[1]]$model_data_post$total_patients[nrow(arl$model_data_post)]
   model_state_c <- as.character(model_state)
   if (model_state_c == "New York City")
   {
@@ -43,8 +44,12 @@ covid_prediction_builder <- function(model_state, mean_inflation, total_patients
   covid_pred_params <- coef(lm1)
   # suppress messages about a rank deficient fit since we are going to fix it
   suppressWarnings({
-    covid_daily_state$pred <- exp(predict(lm1, newdata = covid_daily_state))
-    covid_daily_state_pred_data$pred <- exp(predict(lm1, newdata = covid_daily_state_pred_data))
+    covid_lm_pred <- predict(lm1, newdata = covid_daily_state, se.fit = TRUE)
+    covid_daily_state$pred <- exp(covid_lm_pred$fit)
+    covid_daily_state$se <- covid_lm_pred$se.fit
+    covid_lm_pred <- predict(lm1, newdata = covid_daily_state_pred_data, se.fit = TRUE)
+    covid_daily_state_pred_data$pred <- exp(covid_lm_pred$fit)
+    covid_daily_state_pred_data$se <- covid_lm_pred$se.fit
   })
   
   if (is.na(coef(lm1)[3]) || coef(lm1)[3] >= 0)
@@ -70,23 +75,27 @@ covid_prediction_builder <- function(model_state, mean_inflation, total_patients
                   covid_daily_state$ndate^2),
                 nrow = nrow(covid_daily_state), ncol = 3)
     covid_daily_state$pred <- exp(as.numeric(m %*% covid_pred_params))
+    covid_daily_state$se <- rep(NA, length(covid_daily_state$pred))
     Xnew <- matrix(c(rep(1, nrow(covid_daily_state_pred_data)),
                      covid_daily_state_pred_data$ndate,
                      covid_daily_state_pred_data$ndate^2),
                    nrow = nrow(covid_daily_state_pred_data), ncol = 3)
     covid_daily_state_pred_data$pred <- exp(as.numeric(Xnew %*% covid_pred_params))
+    covid_daily_state_pred_data$se <- rep(NA, length(covid_daily_state_pred_data$pred))
   }
   covid_daily_state_post <- covid_daily_state %>%
     group_by(mmwrweek) %>%
     summarise(pred = max(pred),
               actual = max(Active),
               actual_confirmed = max(Confirmed),
-              pred_ili = max(pred) * mean_inflation / (total_patients + max(pred))) # percent scale
+              pred_ili = max(pred) * mean_inflation / (total_patients + max(pred)), # percent scale
+              pred_ili_se = max(se)) # log scale
   
   covid_daily_state_pred <- covid_daily_state_pred_data %>%
     group_by(mmwrweek) %>%
     summarise(pred = max(pred),
-              pred_ili = max(pred) * mean_inflation / (total_patients + max(pred))) # percent scale
+              pred_ili = max(pred) * mean_inflation / (total_patients + max(pred)), # percent scale
+              pred_ili_se = max(se)) # log scale
   
   return(list(covid_daily_state_post = covid_daily_state_post,
               covid_daily_state_pred = covid_daily_state_pred,

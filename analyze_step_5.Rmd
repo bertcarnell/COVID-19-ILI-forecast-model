@@ -23,7 +23,7 @@ require(forecast)
 ################################################################################
 # filenames
 
-today_date <- "2020-04-03" # before Sunday, Friday is best
+today_date <- "2020-04-10" # before Sunday, Friday is best
 
 ili_input_file <- file.path("data", paste0("ILI_data_", today_date, ".RData"))
 covid_input_file <- file.path("data", paste0("COVID19_data_", today_date, 
@@ -45,9 +45,9 @@ sapply(list.files("src", full.names = TRUE), function(z) {source(z); return(TRUE
 ################################################################################
 # Constants
 
-current_ili_week <- 13 # max(model_data_post$week)
+current_ili_week <- 14 # max(model_data_post$week)
 current_ili_year <- 2020
-current_ili_date <- as.Date("2020-03-22") # Sunday - MMWRweek(current_ili_date)
+current_ili_date <- as.Date("2020-03-29") # Sunday - MMWRweek(current_ili_date)
 
 assertthat::assert_that(current_ili_week == MMWRweek(today_date)$MMWRweek - 1)
 assertthat::assert_that(current_ili_week == MMWRweek(current_ili_date)$MMWRweek)
@@ -182,6 +182,8 @@ for (i in seq_along(hhs_regions_map$state))
     arl$arima_fcst,
     c(crl$covid_daily_state_post$pred_ili, 
       crl$covid_daily_state_pred$pred_ili),
+    c(crl$covid_daily_state_post$pred_ili_se,
+      crl$covid_daily_state_pred$pred_ili_se),
     c(crl$covid_daily_state_post$mmwrweek, 
       crl$covid_daily_state_pred$mmwrweek))
 }
@@ -224,10 +226,13 @@ for (i in seq_along(hhs_regions_map$state))
   week_after_ew10 <- which(aprl$mmwrweeks >= 10)
   week1_week6 <- (len - WEEKS_AHEAD + 1):len
   max_week_ind <- which.max(point_actual_fcst[week_after_ew10])
+  
+  # point estimates for weeks 1 - 6 and peak
   ind <- which(ili_points_template$location == model_state_c)
   ili_points_template$value[ind] <- c(aprl$point[week1_week6],
                                       point_actual_fcst[week_after_ew10][max_week_ind])
 
+  # uncertainty for week 1 - 6
   ind <- which(ili_bin_template$location == model_state_c)
   bin_results <- cbind(aprl$p_bin[, week1_week6],
                                    aprl$p_bin[, week_after_ew10[max_week_ind]])
@@ -237,11 +242,36 @@ for (i in seq_along(hhs_regions_map$state))
   max_week_label <- paste0("2020-ew", aprl$mmwrweeks[week_after_ew10[max_week_ind]])
   date_points_template$value[ind] <- max_week_label
 
+  # uncertainty in the peak epidemic week
   ind <- which(date_bins_template$location == model_state_c)
-  date_bins_template$value[ind] <- 0.75 / (length(ind) - 1)
-  ind <- which(date_bins_template$location == model_state_c &
+  ind_max <- which(date_bins_template$location == model_state_c &
                  date_bins_template$bin == max_week_label)
-  date_bins_template$value[ind] <- 0.25
+  require(triangle)
+  if (length(ind) >= 2)
+  {
+    week_bin_p <- ptriangle(1:length(ind), a = 1, b = length(ind), c = which(ind == ind_max)) -
+      ptriangle(0:(length(ind) - 1), a = 1, b = length(ind), c = which(ind == ind_max))
+  } else if (length(ind) == 1)
+  {
+    print("only one week")
+    week_bin_p <- 1
+  } else
+  {
+    # we expect this for some of the carribean states
+  }
+  
+  # if in the actual weeks (not the last 6), there is a maximum, then none of
+  #   the other weeks are possible peaks
+  actuals <- point_actual_fcst[week_after_ew10][-week1_week6]
+  for (i in 1:length(actuals))
+  {
+    if (actuals[i] < point_actual_fcst[week_after_ew10][max_week_ind])
+    {
+      week_bin_p[i] <- 0
+    }
+  }
+
+  date_bins_template$value[ind] <- week_bin_p / sum(week_bin_p)
 }
 
 ## bind all together
@@ -280,4 +310,12 @@ temp <- state_template %>%
   group_by(location, target) %>%
   summarize(test = sum(as.numeric(value)))
 assertthat::assert_that(all(abs(temp$test - 1) < 1E-6))
+
+if (FALSE)
+{
+  library(devtools)
+  devtools::install_github("reichlab/cdcForecastUtils")
+}
+source(file.path("..", "COVID-19-ILI-forecasting-submissions-bc", "code",
+                 "test-covid-forecast-formatting.R"))
 ```
