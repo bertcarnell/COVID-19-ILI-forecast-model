@@ -23,7 +23,7 @@ require(forecast)
 ################################################################################
 # filenames
 
-today_date <- "2020-04-10" # before Sunday, Friday is best
+today_date <- "2020-04-17" # before Sunday, Friday is best
 
 ili_input_file <- file.path("data", paste0("ILI_data_", today_date, ".RData"))
 covid_input_file <- file.path("data", paste0("COVID19_data_", today_date, 
@@ -45,9 +45,9 @@ sapply(list.files("src", full.names = TRUE), function(z) {source(z); return(TRUE
 ################################################################################
 # Constants
 
-current_ili_week <- 14 # max(model_data_post$week)
+current_ili_week <- 15 # max(model_data_post$week)
 current_ili_year <- 2020
-current_ili_date <- as.Date("2020-03-29") # Sunday - MMWRweek(current_ili_date)
+current_ili_date <- as.Date("2020-04-05") # Sunday - MMWRweek(current_ili_date)
 
 assertthat::assert_that(current_ili_week == MMWRweek(today_date)$MMWRweek - 1)
 assertthat::assert_that(current_ili_week == MMWRweek(current_ili_date)$MMWRweek)
