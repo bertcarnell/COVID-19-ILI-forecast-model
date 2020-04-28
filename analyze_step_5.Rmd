@@ -19,11 +19,12 @@ require(readr)
 require(MMWRweek)
 require(assertthat)
 require(forecast)
+require(triangle)
 
 ################################################################################
 # filenames
 
-today_date <- "2020-04-17" # before Sunday, Friday is best
+today_date <- "2020-04-24" # before Sunday, Friday is best
 
 ili_input_file <- file.path("data", paste0("ILI_data_", today_date, ".RData"))
 covid_input_file <- file.path("data", paste0("COVID19_data_", today_date, 
@@ -45,9 +46,9 @@ sapply(list.files("src", full.names = TRUE), function(z) {source(z); return(TRUE
 ################################################################################
 # Constants
 
-current_ili_week <- 15 # max(model_data_post$week)
+current_ili_week <- 16 # max(model_data_post$week)
 current_ili_year <- 2020
-current_ili_date <- as.Date("2020-04-05") # Sunday - MMWRweek(current_ili_date)
+current_ili_date <- as.Date("2020-04-12") # Sunday - MMWRweek(current_ili_date)
 
 assertthat::assert_that(current_ili_week == MMWRweek(today_date)$MMWRweek - 1)
 assertthat::assert_that(current_ili_week == MMWRweek(current_ili_date)$MMWRweek)
@@ -185,7 +186,8 @@ for (i in seq_along(hhs_regions_map$state))
     c(crl$covid_daily_state_post$pred_ili_se,
       crl$covid_daily_state_pred$pred_ili_se),
     c(crl$covid_daily_state_post$mmwrweek, 
-      crl$covid_daily_state_pred$mmwrweek))
+      crl$covid_daily_state_pred$mmwrweek),
+    arima_result_list[[i]]$model_data_post$unweighted_ili)
 }
 save(arima_plus_result_list, file = ili_state_arima_plus_output_file)
 
@@ -246,7 +248,6 @@ for (i in seq_along(hhs_regions_map$state))
   ind <- which(date_bins_template$location == model_state_c)
   ind_max <- which(date_bins_template$location == model_state_c &
                  date_bins_template$bin == max_week_label)
-  require(triangle)
   if (length(ind) >= 2)
   {
     week_bin_p <- ptriangle(1:length(ind), a = 1, b = length(ind), c = which(ind == ind_max)) -

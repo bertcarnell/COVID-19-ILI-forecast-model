@@ -18,7 +18,7 @@ require(dplyr)
 ################################################################################
 # filenames
 
-today_date <- "2020-04-17"
+today_date <- "2020-04-24"
 
 ili_input_file <- file.path("data", paste0("ILI_data_", today_date, ".RData"))
 covid_input_file <- file.path("data", paste0("COVID19_data_", today_date, ".RData"))
@@ -99,8 +99,11 @@ plot_data3 <- covid_recovered %>%
 plot_data$recovered <- plot_data3$recovered
 plot_data$deaths <- plot_data2$deaths
 plot_data$active <- plot_data$confirmed - plot_data$recovered - plot_data$deaths
+plot_data$confirmed_per_day <- c(0, diff(plot_data$confirmed))
+plot_data$deaths_per_day <- c(0, diff(plot_data$deaths))
 plot_data2 <- reshape2::melt(plot_data, id.vars = "date",
-                             measure.vars = c("confirmed", "recovered", "deaths", "active"),
+                             measure.vars = c("confirmed", "recovered", "deaths", "active",
+                                              "confirmed_per_day", "deaths_per_day"),
                              variable.name = "type",
                              value.name = "count")
 
@@ -110,11 +113,20 @@ ggplot(plot_data2, aes(x = date, y = count, col = type, group = type)) +
   labs(x = "", y = "Count of COVID-19 Cases", col = "Type") +
   theme_bw()
 
-ggplot(subset(plot_data2, count > 0), 
+ggplot(plot_data2 %>% 
+         dplyr::filter(count > 0 & type %in% c("confirmed", "recovered", "deaths", "active")), 
        aes(x = date, y = count, col = type, group = type)) + 
   geom_line() +
   scale_y_log10(label = scales::comma_format(accuracy = 1)) +
   labs(x = "", y = "Count of COVID-19 Cases (log10 scale)", col = "Type") +
+  theme_bw()
+
+ggplot(plot_data2 %>% 
+         dplyr::filter(count > 0 & type %in% c("confirmed_per_day", "deaths_per_day")), 
+       aes(x = date, y = count, col = type, group = type)) + 
+  geom_line() +
+  scale_y_log10(label = scales::comma_format(accuracy = 1)) +
+  labs(x = "", y = "COVID-19 Cases (log10 scale) per day", col = "Type") +
   theme_bw()
 ```
 
@@ -161,4 +173,28 @@ ggplot(subset(plot_data, Active > 0),
   theme_bw() +
   theme(strip.text.y = element_text(angle = 0)) +
   labs(x = "", y = "Active (log scale)")
+```
+
+## Ohio, NY, Washington
+
+```{r ohio, echo=FALSE}
+Z <- plot_data %>% dplyr::filter(Province_State %in% c("Ohio", "New York", "Washington") & Deaths > 0)
+ggplot(Z, aes(x = date, y = Deaths, col = Province_State, group = Province_State)) +
+  geom_line() +
+  scale_y_log10(label = scales::comma_format(accuracy = 1)) +
+  theme_bw() +
+  labs(x = "", y = "Deaths (log scale)")
+Z <- Z %>% dplyr::group_by(Province_State) %>% dplyr::mutate(Deaths_per_day = c(0, diff(Deaths)),
+                                                             Confirmed_per_day = c(0, diff(Confirmed)))
+ggplot(Z, aes(x = date, y = Deaths_per_day, col = Province_State, group = Province_State)) +
+  geom_line() +
+  theme_bw() +
+  scale_y_log10(label = scales::comma_format(accuracy = 1)) +
+  labs(x = "", y = "Deaths Per Day (log scale)", col = "State")
+
+ggplot(Z, aes(x = date, y = Confirmed_per_day, col = Province_State, group = Province_State)) +
+  geom_line() +
+  theme_bw() +
+  scale_y_log10(label = scales::comma_format(accuracy = 1)) +
+  labs(x = "", y = "Confirmed Per Day (log scale)", col = "State")
 ```
