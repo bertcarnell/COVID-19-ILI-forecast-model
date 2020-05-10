@@ -1,0 +1,255 @@
+---
+title: "Score All Teams"
+author: "Rob Carnell"
+date: "April 6, 2020"
+output: 
+  html_document: 
+    toc: yes
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+################################################################################
+# Packages
+
+require(assertthat)
+require(magrittr)
+require(ggplot2)
+require(dplyr)
+require(cdcfluview)
+
+################################################################################
+# Constants
+
+# centers of the probability bins
+bin_centers <- c(seq(0.05, 24.5, by = 0.1), (25 + 100)/2)
+# weeks which have actuals since week 10 (e.g. if we are on the ew13 forecast
+#   then this should be 10:12)
+fcst_weeks <- 10:14
+WEEKS_AHEAD <- 6
+
+################################################################################
+# Filepaths
+
+if (Sys.info()["nodename"] == "L5CG8455J1T")
+{
+  submission_path <- file.path("c:", "developer", "repositories", "COVID-19-ILI-forecasting-submissions")
+} else if (Sys.info()["nodename"] == "DESKTOP-EQA3H87")
+{
+  submission_path <- file.path("c:", "repositories", "COVID-19-ILI-forecasting-submissions-bc")
+} else
+{
+  stop("Enter your path in an ifelse statement")
+}
+assertthat::assert_that(file.exists(submission_path), msg = "Enter the path to your repo checkout")
+
+################################################################################
+# data prep
+
+submission_path <- file.path(submission_path, "state-forecast-data")
+
+sub_files_full <- list.files(submission_path, recursive = TRUE, full.names = TRUE,
+                        pattern = "^2020[-].*[.]csv")
+sub_files <- list.files(submission_path, recursive = TRUE, 
+                        pattern = "^2020[-].*[.]csv")
+temp <- regexpr("[-]ew[0-9][0-9]+[-]", sub_files)
+sub_files_weeks <- gsub("-", "", substring(sub_files, first = temp, last = temp + attr(temp, "match.length") - 1))
+sub_files_teams <- sapply(strsplit(sub_files, "[/\\]"), function(z) z[1], USE.NAMES = FALSE)
+
+X <- lapply(sub_files_full, read.csv, stringsAsFactors = FALSE)
+assertthat::assert_that(length(X) == length(sub_files_weeks))
+assertthat::assert_that(length(X) == length(sub_files_teams))
+
+for (i in seq_along(X))
+{
+  X[[i]]$fcst_week <- sub_files_weeks[i]
+  X[[i]]$team <- sub_files_teams[i]
+}
+
+X <- do.call("rbind", X)
+X$location <- factor(X$location)
+X$target <- factor(X$target)
+X$type <- factor(X$type)
+X$fcst_week <- factor(X$fcst_week)
+X$team <- factor(X$team)
+
+X_pt_fcst <- X %>% dplyr::filter(type == "point" & !grepl("[pP]eak", target))
+X_pt_fcst$value <- as.numeric(X_pt_fcst$value)
+
+X_peak_fcst <- X %>% dplyr::filter(type == "point" & target == "Peak height")
+X_peak_fcst$value <- as.numeric(X_peak_fcst$value)
+
+X_fcst_bins <- X %>% dplyr::filter(type == "bin" & !grepl("[pP]eak", target))
+X_fcst_bins$value <- as.numeric(X_fcst_bins$value)
+
+X_peak_bins <- X %>% dplyr::filter(type == "bin" & target == "Peak height")
+X_peak_bins$value <- as.numeric(X_peak_bins$value)
+
+X_pt_week <- X %>% dplyr::filter(type == "point" & target == "Peak week")
+X_week_bins <- X %>% dplyr::filter(type == "bin" & target == "Peak week")
+
+X_fcst_bins$bin_centers <- bin_centers[round(as.numeric(X_fcst_bins$bin) / 0.1, 0) + 1]
+X_peak_bins$bin_centers <- bin_centers[round(as.numeric(X_peak_bins$bin) / 0.1, 0) + 1]
+
+stateflu <- cdcfluview::ilinet(region = "state", years = 2019)
+stateflu <- stateflu %>% dplyr::filter(year == 2020 & week >= 10)
+
+u_states <- unique(stateflu$region)
+plot_data <- expand.grid(location = u_states,
+                         target = paste(1:WEEKS_AHEAD, "wk ahead"),
+                         value = NA,
+                         week = fcst_weeks)
+plot_data$fcst_week <- paste0("ew", plot_data$week)
+for (i in seq_along(u_states))
+{
+  for (j in seq_along(fcst_weeks))
+  {
+    temp_stateflu <- stateflu %>% 
+      dplyr::filter(region == u_states[i] & week > fcst_weeks[j] &
+                    week <= fcst_weeks[j] + WEEKS_AHEAD)
+    ind <- which(plot_data$location == u_states[i] &
+                   plot_data$week == fcst_weeks[j])
+    plot_data$value[ind] <- c(temp_stateflu$unweighted_ili, 
+                              rep(NA, length(ind) - nrow(temp_stateflu)))
+  }
+}
+
+```
+
+## State Point Estimates
+
+```{r state_point, echo=FALSE}
+LOCATIONS <- levels(X$location)
+WEEKS_AHEAD <- 6
+FCST_WEEKS <- levels(X$fcst_week)
+TEAMS <- levels(X$team)
+
+point_scores <- array(NA, dim = c(length(LOCATIONS),
+                                  WEEKS_AHEAD,
+                                  length(FCST_WEEKS),
+                                  length(TEAMS)))
+
+for (i in seq_along(LOCATIONS))
+{
+  for (j in 1:6)
+  {
+    for (k in seq_along(FCST_WEEKS))
+    {
+      #i <- 2
+      #j <- 1
+      #k <- 1
+      Z <- plot_data %>% dplyr::filter(location == LOCATIONS[i] & !is.na(value) &
+                                         target == paste(j, "wk ahead") &
+                                         fcst_week == FCST_WEEKS[k])
+      if (nrow(Z) == 0)
+        next
+      for (m in seq_along(TEAMS))
+      {
+        #m <- 4
+        Y <- X_pt_fcst %>% dplyr::filter(location == LOCATIONS[i] & !is.na(value) &
+                                           target == paste(j, "wk ahead") &
+                                           fcst_week == FCST_WEEKS[k] &
+                                           team == TEAMS[m])
+        if (nrow(Y) == 0)
+          next
+        point_scores[i,j,k,m] <- Z$value - Y$value
+      }
+    }
+  }
+}
+
+        Y <- X_pt_fcst %>% dplyr::filter(!is.na(value) &
+                                           team == "PSI-DICE")
+        nrow(Y)
+        Y <- X_pt_fcst %>% dplyr::filter(!is.na(value) &
+                                           team == "bertcarnell-arima_glm")
+        nrow(Y)
+        53*6*4
+        Z <- plot_data %>% dplyr::filter(!is.na(value))
+        nrow(Z)
+
+temp <- data.frame(team = TEAMS,
+           sum_resid = apply(point_scores, 4, sum, na.rm = TRUE),
+           sum_2_resid = apply(point_scores, 4, function(z) sum(z^2, na.rm = TRUE)),
+           sum_resid_per = apply(point_scores, 4, mean, na.rm = TRUE),
+           sum_2_resid_per = apply(point_scores, 4, function(z) mean(z^2, na.rm = TRUE)),
+           preds = apply(point_scores, 4, function(z) length(which(!is.na(c(z))))))
+temp[order(temp$sum_2_resid_per),]
+
+```
+
+## State Peak ILI Estimates
+
+```{r state_peak, echo=FALSE}
+for (i in seq_along(levels(X$location)))
+{
+  Y <- X_peak_fcst %>% dplyr::filter(location == levels(X$location)[i] & !is.na(value))
+  g <- ggplot(Y, aes(x = fcst_week, y = value, col = team)) +
+    geom_point() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+    labs(x = levels(X$location)[i], y = "ILI (%)", col = "")
+  plot(g)
+}
+```
+
+## State Forecast Uncertainty
+
+```{r state_forecast_unc, echo=FALSE}
+for (i in seq_along(levels(X$location)))
+{
+  Y <- X_fcst_bins %>% dplyr::filter(location == levels(X$location)[i] & 
+                                 !is.na(value) & !is.na(bin_centers) & 
+                                   target == "6 wk ahead")
+  g <- ggplot(Y) +
+    geom_histogram(aes(x = bin_centers, y = ..density.., weight = value), 
+                   breaks = c(seq(0, 25, by = 0.1), 100), position = "identity") +
+    facet_grid(team ~ fcst_week) +
+    labs(x = paste("ILI (%)", levels(X$location)[i]), y = "Density - 6 wk ahead") +
+    coord_cartesian(xlim = c(0, 25)) +
+    theme(axis.text.y = element_blank(), strip.text.y = element_text(angle = 0))
+  plot(g)
+}
+```
+
+```{r state_forecast_peak_unc, echo=FALSE}
+for (i in seq_along(levels(X$location)))
+{
+  Y <- X_peak_bins %>% dplyr::filter(location == levels(X$location)[i] & 
+                                    !is.na(value))
+  g <- ggplot(Y) +
+    geom_histogram(aes(x = bin_centers, y = ..density.., weight = value), 
+                   breaks = c(seq(0, 25, by = 0.1), 100), position = "identity") +
+    facet_grid(team ~ fcst_week) +
+    labs(x = paste("Peak ILI (%)", levels(X$location)[i]), y = "Density") +
+    coord_cartesian(xlim = c(0, 25)) +
+    theme(axis.text.y = element_blank(), strip.text.y = element_text(angle = 0))
+  plot(g)
+}
+```
+
+## Peak week estimates
+
+```{r state_peak_week, echo=FALSE}
+for (i in seq_along(levels(X$location)))
+{
+  Y <- X_pt_week %>% dplyr::filter(location == levels(X$location)[i] & !is.na(value))
+  Y2 <- X_week_bins %>% dplyr::filter(location == levels(X$location)[i] & !is.na(value))
+  Y$value <- factor(Y$value, levels = paste0("2020-ew", 10:35))
+  my_breaks <- unique(Y2$bin)[seq(1, length(unique(Y2$bin)), by = 3)]
+  g <- ggplot(Y2) +
+    geom_bar(aes(x = bin, y = value), stat = "Identity") +
+    facet_grid(team ~ fcst_week) +
+    labs(x = paste("Peak Week", levels(X$location)[i]), y = "Density") +
+    theme(axis.text.y = element_blank(), strip.text.y = element_text(angle = 0), 
+          axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+    scale_x_discrete(breaks = my_breaks) +
+    geom_bar(aes(x = value, y = max(Y2$value)), data = Y, stat = "Identity", 
+             col = "blue", fill = "blue", width = 0.1)
+  plot(g)
+}
+```
+
+
+
