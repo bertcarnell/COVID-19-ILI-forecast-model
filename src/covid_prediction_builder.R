@@ -34,8 +34,10 @@ covid_prediction_builder <- function(model_state, mean_inflation, total_patients
     MMWRweek::MMWRweek(covid_daily_state_pred_data$date)$MMWRweek
   
   # when dates are before march 1st, they are usually low numbers and don't fit
-  #   the concave down quadratic well.  
-  ind <- which(covid_daily_state$date >= as.Date("2020-03-01"))
+  #   the concave down quadratic well. 
+  # 5-17-2020 roll the date forward to 4/15 when a lot of the active covid
+  #    statistics flattened out on a log scale
+  ind <- which(covid_daily_state$date >= as.Date("2020-04-15"))
   if (length(ind) < 3)
     ind <- 1:nrow(covid_daily_state)
   

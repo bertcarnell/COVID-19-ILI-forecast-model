@@ -27,7 +27,7 @@ require(cdcfluview)
 bin_centers <- c(seq(0.05, 24.5, by = 0.1), (25 + 100)/2)
 # weeks which have actuals since week 10 (e.g. if we are on the ew13 forecast
 #   then this should be 10:12)
-fcst_weeks <- 10:17
+fcst_weeks <- 10:18
 WEEKS_AHEAD <- 6
 
 ################################################################################

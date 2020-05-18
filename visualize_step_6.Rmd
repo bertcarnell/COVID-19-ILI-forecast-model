@@ -20,7 +20,7 @@ require(assertthat)
 ################################################################################
 # filenames
 
-today_date <- "2020-05-08" # before Sunday
+today_date <- "2020-05-15" # before Sunday
 
 ili_input_file <- file.path("data", paste0("ILI_data_", today_date, ".RData"))
 covid_input_file <- file.path("data", paste0("COVID19_data_", today_date, 
