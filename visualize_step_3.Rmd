@@ -8,17 +8,10 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-################################################################################
-# Packages
-
-require(ggplot2)
-require(magrittr)
-require(dplyr)
+source("common.R")
 
 ################################################################################
 # filenames
-
-today_date <- "2020-05-22"
 
 ili_input_file <- file.path("data", paste0("ILI_data_", today_date, ".RData"))
 covid_input_file <- file.path("data", paste0("COVID19_data_", today_date, ".RData"))

@@ -1,24 +1,10 @@
 # Data Step 1 - Obtain the recent ILI data
 
-################################################################################
-# Packages
-
-# Install from GitHub
-if (FALSE)
-{
-  require(devtools)
-  devtools::install_github("hrbrmstr/cdcfluview")
-}
-
-require(cdcfluview)
-require(reshape2)
-require(assertthat)
-require(magrittr)
+source("common.R")
 
 ################################################################################
 # Output file
 
-today_date <- as.Date("2020-05-22") # Sys.Date() - Friday
 output_file <- file.path("data", paste0("ILI_data_", today_date, ".RData"))
 
 ################################################################################

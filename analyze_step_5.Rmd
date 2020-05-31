@@ -8,23 +8,10 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-################################################################################
-# Packages
-
-require(magrittr)
-require(dplyr)
-require(ggplot2)
-require(mgcv)
-require(readr)
-require(MMWRweek)
-require(assertthat)
-require(forecast)
-require(triangle)
+source("common.R")
 
 ################################################################################
 # filenames
-
-today_date <- "2020-05-22" # before Sunday, Friday is best
 
 ili_input_file <- file.path("data", paste0("ILI_data_", today_date, ".RData"))
 covid_input_file <- file.path("data", paste0("COVID19_data_", today_date, 
@@ -42,16 +29,6 @@ load(ili_input_file)
 load(covid_input_file)
 
 sapply(list.files("src", full.names = TRUE), function(z) {source(z); return(TRUE)}, USE.NAMES = FALSE)
-
-################################################################################
-# Constants
-
-current_ili_week <- 20 # max(model_data_post$week)
-current_ili_year <- 2020
-current_ili_date <- as.Date("2020-05-10") # Sunday - MMWRweek(current_ili_date)
-
-assertthat::assert_that(current_ili_week == MMWRweek(today_date)$MMWRweek - 1)
-assertthat::assert_that(current_ili_week == MMWRweek(current_ili_date)$MMWRweek)
 
 ili_covid_state_forecast_file <- file.path("state-forecast-data", 
                                            "bertcarnell-arima_glm",

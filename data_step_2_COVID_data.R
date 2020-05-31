@@ -1,15 +1,10 @@
 # Data Step 2 - Read COVID-19 Cases
 
-################################################################################
-# Packages
-
-require(reshape2)
-require(MMWRweek)
+source("common.R")
 
 ################################################################################
 # Constants
 
-today_date <- as.Date("2020-05-22") # Sys.Date() - Friday
 output_file <- file.path("data", paste0("COVID19_data_", today_date, ".RData"))
 
 ################################################################################
@@ -37,6 +32,9 @@ read_covid_daily <- function(filenams, dates)
 {
   # filenams <- paste0(strftime(as.Date("2020-01-22")+0:65, format = "%m-%d-%Y"), ".csv")
   # filenams <- "03-21-2020.csv"
+  # filenams <- "05-29-2020.csv"
+  # dates <- as.Date("2020-05-29")
+  
   assertthat::assert_that(length(filenams) == length(dates))
   
   # read from github
@@ -58,15 +56,21 @@ read_covid_daily <- function(filenams, dates)
     {
       names(z) <- c("Province_State", "Country_Region", "Last_Update", "Confirmed",
                     "Deaths", "Recovered", "Lat", "Long_", "date")
-    } else if (grepl("FIPS", names(z)[1])) 
+    } else if (grepl("FIPS", names(z)[1]) & length(names(z)) == 13) 
     {
       names(z) <- c("FIPS", "Admin2", "Province_State", "Country_Region",
                     "Last_Update", "Lat", "Long_", "Confirmed", "Deaths",
                     "Recovered", "Active", "Combined_Key", "date")
+    } else if (grepl("FIPS", names(z)[1]) & length(names(z)) == 15)
+    {
+      names(z) <- c("FIPS", "Admin2", "Province_State", "Country_Region",
+                    "Last_Update", "Lat", "Long_", "Confirmed", "Deaths",
+                    "Recovered", "Active", "Combined_Key", 
+                    "Incidence_Rate", "Case_Fatality_Ratio", "date")
     } else
     {
       print(head(z))
-      stop("Unexpected names")
+      stop("Unexpected names in input datasets")
     }
     # Last_Update doesn't always conform to the date
     test1 <- strptime(z$Last_Update[1:3], "%m/%d/%y %H:%M")
@@ -87,6 +91,8 @@ read_covid_daily <- function(filenams, dates)
       z$Last_Update <- strptime(z$Last_Update, "%Y-%m-%d %H:%M:%S")
     } else
     {
+      print(names(z))
+      print(length(names(z)))
       print(head(z))
       stop("Unexpected date format")
     }
@@ -106,12 +112,20 @@ read_covid_daily <- function(filenams, dates)
       z$Long_ <- as.numeric(NA)
       z$Active <- as.integer(NA)
       z$Combined_Key <- as.character(NA)
+      z$Incidence_Rate <- as.numeric(NA)
+      z$Case_Fatality_Ratio <- as.numeric(NA)
     } else if (ncol(z) == 12)
     {
       z$FIPS <- as.integer(NA)
       z$Admin2 <- as.character(NA)
       z$Active <- as.integer(NA)
       z$Combined_Key <- as.character(NA)
+      z$Incidence_Rate <- as.numeric(NA)
+      z$Case_Fatality_Ratio <- as.numeric(NA)
+    } else if (ncol(z) == 16)
+    {
+      z$Incidence_Rate <- as.numeric(NA)
+      z$Case_Fatality_Ratio <- as.numeric(NA)
     }
 
     return(z)
