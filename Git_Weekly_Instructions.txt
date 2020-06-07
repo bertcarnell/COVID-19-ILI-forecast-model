@@ -1,0 +1,19 @@
+# Directions for git operations
+
+git remote -v
+git fetch upstream
+git checkout master
+git merge upstream/master
+git reset --hard upstream/master
+git push origin master
+
+# check github to ensure we are even with the upstream/master
+
+git checkout -b ewXX-bertcarnell-arima_glm
+cp ../COVID-19-ILI-forecast-model/state-forecast-data/bertcarnell-arima_glm/2020-ewXX-bertcarnell-arima_glm.csv state-forecast-data/bertcarnell-arima_glm/
+git add state-forecast-data/bertcarnell-arima_glm/2020-ewXX-bertcarnell-arima_glm.csv
+git commit -m "added ewXX for bertcarnell-arima_glm"
+git push origin ewXX-bertcarnell-arima_glm
+
+# go to github to complete the pull request
+
