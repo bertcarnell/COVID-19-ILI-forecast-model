@@ -23,11 +23,11 @@ require(triangle)
 ################################################################################
 # common constants
 
-today_date <- as.Date("2020-06-26") # Sys.Date() - Friday
+today_date <- as.Date("2020-07-03") # Sys.Date() - Friday
 
-current_ili_week <- 25 # max(model_data_post$week)
+current_ili_week <- 26 # max(model_data_post$week)
 current_ili_year <- 2020
-current_ili_date <- as.Date("2020-06-14") # Sunday - MMWRweek(current_ili_date)
+current_ili_date <- as.Date("2020-06-21") # Sunday - MMWRweek(current_ili_date)
 
 assertthat::assert_that(current_ili_week == MMWRweek(today_date)$MMWRweek - 1)
 assertthat::assert_that(current_ili_week == MMWRweek(current_ili_date)$MMWRweek)
