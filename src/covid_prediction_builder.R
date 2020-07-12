@@ -37,7 +37,8 @@ covid_prediction_builder <- function(model_state, mean_inflation, total_patients
   #   the concave down quadratic well. 
   # 5-17-2020 roll the date forward to 4/15 when a lot of the active covid
   #    statistics flattened out on a log scale
-  ind <- which(covid_daily_state$date >= as.Date("2020-04-15"))
+  # 7-12-2020 move date forward to 6/15 due to the re=openning
+  ind <- which(covid_daily_state$date >= as.Date("2020-06-15"))
   if (length(ind) < 3)
     ind <- 1:nrow(covid_daily_state)
   
